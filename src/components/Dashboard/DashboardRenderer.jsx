@@ -12,7 +12,7 @@ export default function DashboardRenderer({ config, saveConfig, auth }) {
     navigate('/setup')
   }
 
-  const { filteredData, loading, error, cachedAt, refetch } = useSheetData(config, auth.accessToken, handleAuthError)
+  const { filteredTabDataMap, loading, error, cachedAt, refetch } = useSheetData(config, auth.accessToken, handleAuthError)
   const [showDateFilter, setShowDateFilter] = useState(false)
 
   // Tick every 30s so the "X min ago" label stays accurate without a refetch
@@ -127,10 +127,10 @@ export default function DashboardRenderer({ config, saveConfig, auth }) {
           </div>
         )}
 
-        {loading && !filteredData.rows.length ? (
+        {loading && !Object.keys(filteredTabDataMap).length ? (
           <LoadingSkeleton />
         ) : (
-          <WidgetGrid widgets={config.widgets} data={filteredData} config={config} />
+          <WidgetGrid widgets={config.widgets} filteredTabDataMap={filteredTabDataMap} config={config} />
         )}
       </main>
     </div>

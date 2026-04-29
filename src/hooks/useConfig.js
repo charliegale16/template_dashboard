@@ -9,16 +9,14 @@ const STORAGE_KEY = 'dashboard_config'
 export const DEFAULT_CONFIG = {
   dashboardName: '',
   source: 'sheets',        // 'sheets' | 'excel'
-  sheetId: '',             // Google Sheet ID extracted from URL
-  sheetName: '',           // Primary tab (always sheetTabs[0])
+  sheetId: '',             // Google Sheet document ID
+  sheetName: '',           // Primary tab (= sheetTabs[0])
   sheetTabs: [],           // All selected tab names (ordered; first = primary)
-  mappings: {
-    date: '',              // column header mapped to the date axis
-    primaryMetric: '',     // main numeric metric
-    secondaryMetric: '',   // optional second metric
-    category: '',          // categorical grouping column
-  },
-  widgets: [],             // array of widget ids selected in Step 4
+  // tabMappings holds column-role assignments per tab, e.g.:
+  //   { Orders: { date: 'Date', primaryMetric: 'Revenue', category: 'Category' },
+  //     Marketing: { date: 'Week', primaryMetric: 'Sessions' } }
+  tabMappings: {},
+  widgets: [],             // widget ids selected in Step 4
   dateRange: {
     start: '',
     end: '',
@@ -38,7 +36,17 @@ export function useConfig() {
   const [config, setConfig] = useState(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      return stored ? { ...DEFAULT_CONFIG, ...JSON.parse(stored) } : { ...DEFAULT_CONFIG }
+      if (!stored) return { ...DEFAULT_CONFIG }
+      const parsed = JSON.parse(stored)
+      // Migrate old flat-mappings configs: if tabMappings is absent but
+      // mappings + sheetName exist, promote them into tabMappings.
+      if (parsed.mappings && parsed.sheetName && !parsed.tabMappings?.[parsed.sheetName]) {
+        parsed.tabMappings = {
+          ...(parsed.tabMappings || {}),
+          [parsed.sheetName]: parsed.mappings,
+        }
+      }
+      return { ...DEFAULT_CONFIG, ...parsed }
     } catch {
       return { ...DEFAULT_CONFIG }
     }
@@ -61,7 +69,10 @@ export function useConfig() {
     setConfig({ ...DEFAULT_CONFIG })
   }, [])
 
-  const hasConfig = Boolean(config.sheetId && config.mappings.primaryMetric)
+  const hasConfig = Boolean(
+    config.sheetId &&
+    Object.values(config.tabMappings || {}).some((m) => m?.primaryMetric)
+  )
 
   return { config, saveConfig, clearConfig, hasConfig }
 }

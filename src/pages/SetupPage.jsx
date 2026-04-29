@@ -43,7 +43,7 @@ export default function SetupPage({ config, saveConfig, auth }) {
   function canAdvance() {
     if (step === 0) return auth.isAuthenticated
     if (step === 1) return Boolean(config.sheetId && config.sheetName)
-    if (step === 2) return Boolean(config.mappings?.primaryMetric)
+    if (step === 2) return Object.values(config.tabMappings || {}).some((m) => m?.primaryMetric)
     if (step === 3) return Boolean(config.widgets?.length && config.dashboardName)
     return true
   }

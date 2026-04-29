@@ -1,36 +1,57 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { fetchSheetData } from '../adapters/SheetsAdapter'
-import { getCached, setCached, TTL_MS } from '../utils/sheetCache'
+import { getCached, setCached } from '../utils/sheetCache'
 // Phase 2: import { fetchSheetData as fetchExcelData } from '../adapters/ExcelAdapter'
 
 /**
- * Fetches sheet data with a localStorage cache (TTL = 5 minutes).
+ * Fetches data for every selected tab in parallel with a localStorage cache.
  *
- * On mount the hook hydrates immediately from cache if a fresh entry exists —
- * zero API calls, zero quota cost.  A stale or missing entry triggers a live
- * fetch.  Calling refetch(true) bypasses the cache and always goes live.
+ * Returns filteredTabDataMap — a map of tabName → { headers, rows } with the
+ * date-range filter applied using each tab's own column mappings.
  *
- * @param {object}   config       - Dashboard config from useConfig
- * @param {string}   accessToken  - OAuth 2.0 Bearer token from useAuth
- * @param {Function} onAuthError  - Called on 401; should logout + redirect
- * @returns {{ data, filteredData, loading, error, cachedAt, refetch }}
+ * refetch(force=false) — omitting force (or passing false) serves from cache
+ * when all tabs are fresh.  refetch(true) always goes live and refreshes cache.
  */
 export function useSheetData(config, accessToken, onAuthError) {
-  const cachedEntry = getCached(config.sheetId, config.sheetName)
+  const tabs = useMemo(
+    () => config.sheetTabs?.length ? config.sheetTabs : config.sheetName ? [config.sheetName] : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config.sheetTabs?.join(','), config.sheetName]
+  )
 
-  const [data, setData] = useState(cachedEntry?.data ?? { headers: [], rows: [] })
-  const [cachedAt, setCachedAt] = useState(cachedEntry?.cachedAt ?? null)
-  const [loading, setLoading] = useState(!cachedEntry)
+  // Hydrate from cache synchronously so widgets render immediately
+  const [tabDataMap, setTabDataMap] = useState(() => {
+    const map = {}
+    tabs.forEach((tab) => {
+      const entry = getCached(config.sheetId, tab)
+      if (entry) map[tab] = entry.data
+    })
+    return map
+  })
+
+  const [cachedAt, setCachedAt] = useState(() => {
+    const ats = tabs.map((tab) => getCached(config.sheetId, tab)?.cachedAt).filter(Boolean)
+    return ats.length ? Math.min(...ats) : null
+  })
+
+  const [loading, setLoading] = useState(() => tabs.some((tab) => !getCached(config.sheetId, tab)))
   const [error, setError] = useState(null)
 
   const refetch = useCallback(async (force = false) => {
-    if (!config.sheetId || !config.sheetName || !accessToken) return
+    if (!config.sheetId || !tabs.length || !accessToken) return
 
     if (!force) {
-      const entry = getCached(config.sheetId, config.sheetName)
-      if (entry) {
-        setData(entry.data)
-        setCachedAt(entry.cachedAt)
+      const allCached = tabs.every((tab) => getCached(config.sheetId, tab))
+      if (allCached) {
+        const map = {}
+        const ats = []
+        tabs.forEach((tab) => {
+          const entry = getCached(config.sheetId, tab)
+          map[tab] = entry.data
+          ats.push(entry.cachedAt)
+        })
+        setTabDataMap(map)
+        setCachedAt(Math.min(...ats))
         setLoading(false)
         return
       }
@@ -39,47 +60,63 @@ export function useSheetData(config, accessToken, onAuthError) {
     setLoading(true)
     setError(null)
     try {
-      // Phase 2: swap adapter based on config.source
-      // const fn = config.source === 'excel' ? fetchExcelData : fetchSheetData
-      const result = await fetchSheetData(config.sheetId, config.sheetName, accessToken)
-      setData(result)
-      const ts = setCached(config.sheetId, config.sheetName, result)
-      setCachedAt(ts)
+      const results = await Promise.all(
+        tabs.map(async (tab) => {
+          // Re-use cache for individual tabs that are still fresh during a partial force-refresh
+          if (!force) {
+            const entry = getCached(config.sheetId, tab)
+            if (entry) return { tab, data: entry.data, ts: entry.cachedAt }
+          }
+          // Phase 2: const fn = config.source === 'excel' ? fetchExcelData : fetchSheetData
+          const data = await fetchSheetData(config.sheetId, tab, accessToken)
+          const ts = setCached(config.sheetId, tab, data)
+          return { tab, data, ts }
+        })
+      )
+      const map = {}
+      const ats = []
+      results.forEach(({ tab, data, ts }) => { map[tab] = data; ats.push(ts) })
+      setTabDataMap(map)
+      setCachedAt(Math.min(...ats))
     } catch (err) {
-      if (err.status === 401) {
-        onAuthError?.()
-        return
-      }
+      if (err.status === 401) { onAuthError?.(); return }
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [config.sheetId, config.sheetName, config.source, accessToken, onAuthError])
+  }, [config.sheetId, tabs, config.source, accessToken, onAuthError])
 
-  useEffect(() => {
-    refetch(false)
-  }, [refetch])
+  useEffect(() => { refetch(false) }, [refetch])
 
-  const filteredData = applyDateFilter(data, config)
+  // Apply per-tab date filter using each tab's own column mappings
+  const filteredTabDataMap = useMemo(() => {
+    const out = {}
+    Object.entries(tabDataMap).forEach(([tab, data]) => {
+      const mappings = config.tabMappings?.[tab] || {}
+      out[tab] = applyDateFilter(data, config.dateRange, mappings.date)
+    })
+    return out
+  }, [tabDataMap, config.tabMappings, config.dateRange])
 
-  return { data, filteredData, loading, error, cachedAt, refetch }
+  return { tabDataMap, filteredTabDataMap, loading, error, cachedAt, refetch }
 }
 
-function applyDateFilter(data, config) {
-  const { start, end } = config.dateRange || {}
+function applyDateFilter(data, dateRange, dateColumn) {
+  const { start, end } = dateRange || {}
   if (!start && !end) return data
 
-  const dateColIndex = data.headers.indexOf(config.mappings?.date)
+  const dateColIndex = data.headers.indexOf(dateColumn)
   if (dateColIndex === -1) return data
 
   const startMs = start ? new Date(start).getTime() : -Infinity
-  const endMs = end ? new Date(end).getTime() : Infinity
+  const endMs   = end   ? new Date(end).getTime()   : Infinity
 
-  const rows = data.rows.filter((row) => {
-    const d = new Date(row[dateColIndex])
-    if (isNaN(d.getTime())) return true
-    return d.getTime() >= startMs && d.getTime() <= endMs
-  })
-
-  return { headers: data.headers, rows }
+  return {
+    headers: data.headers,
+    rows: data.rows.filter((row) => {
+      const d = new Date(row[dateColIndex])
+      if (isNaN(d.getTime())) return true
+      return d.getTime() >= startMs && d.getTime() <= endMs
+    }),
+  }
 }

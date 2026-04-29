@@ -42,7 +42,12 @@ export default function Step4Widgets({ config, onChange }) {
   }
 
   function isSatisfied(widget) {
-    return widget.requires.every((role) => Boolean(config.mappings?.[role]))
+    const allMappings = Object.values(config.tabMappings || {})
+    if (!allMappings.length) return false
+    // A widget is available if at least one mapped tab satisfies all its required roles
+    return widget.requires.every((role) =>
+      allMappings.some((m) => Boolean(m?.[role]))
+    )
   }
 
   return (
