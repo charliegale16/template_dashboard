@@ -20,7 +20,10 @@ export default function WidgetGrid({
   }
 
   const tabs = (config.sheetTabs || (config.sheetName ? [config.sheetName] : []))
-    .filter((tab) => config.tabMappings?.[tab]?.revenue)
+    .filter((tab) => {
+      const m = config.tabMappings?.[tab]
+      return m && Object.values(m).some(Boolean)
+    })
 
   if (!tabs.length) {
     return (
@@ -79,7 +82,7 @@ export default function WidgetGrid({
                           isFirst={idx === 0}
                           isLast={idx === widgets.length - 1}
                           hasOverrides={Boolean(widget.config && Object.keys(widget.config).length)}
-                          hasConfigurableRoles={(entry.configurableRoles ?? []).length > 0}
+                          hasConfigurableRoles={entry.isCustom || (entry.configurableRoles ?? []).length > 0}
                           onUpdate={(updates) => onUpdate(widget.id, updates)}
                           onRemove={() => onRemove(widget.id)}
                           onMoveLeft={() => onMove(widget.id, -1)}

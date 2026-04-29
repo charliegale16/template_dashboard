@@ -113,9 +113,10 @@ export function useConfig() {
     setConfig({ ...DEFAULT_CONFIG })
   }, [])
 
+  // A tab is "configured" when at least one role has been mapped (not necessarily revenue)
   const hasConfig = Boolean(
     config.sheetId &&
-    Object.values(config.tabMappings || {}).some((m) => m?.revenue)
+    Object.values(config.tabMappings || {}).some((m) => m && Object.values(m).some(Boolean))
   )
 
   return { config, saveConfig, clearConfig, hasConfig }

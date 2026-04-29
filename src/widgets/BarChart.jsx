@@ -27,6 +27,7 @@ export default function BarChart({
   yRole = 'revenue',
   countMode = false,
   horizontal = false,
+  title: titleProp,
 }) {
   const chartData = useMemo(
     () => buildChartData(data, config, xRole, yRole, countMode),
@@ -35,9 +36,7 @@ export default function BarChart({
 
   const xLabel = config.mappings?.[xRole] || xRole
   const yLabel = countMode ? 'Orders' : (config.mappings?.[yRole] || yRole)
-  const title  = countMode
-    ? `Orders by ${xLabel}`
-    : `${yLabel} by ${xLabel}`
+  const title  = titleProp ?? (countMode ? `Orders by ${xLabel}` : `${yLabel} by ${xLabel}`)
 
   if (!chartData.length) return <EmptyState title={title} />
 

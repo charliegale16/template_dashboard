@@ -2,6 +2,7 @@ import KPICard from './KPICard'
 import LineChart from './LineChart'
 import BarChart from './BarChart'
 import DataTable from './DataTable'
+import CustomWidget from './CustomWidget'
 
 export const WIDGET_REGISTRY = {
   // ── KPI cards ──────────────────────────────────────────────────────────────
@@ -128,6 +129,19 @@ export const WIDGET_REGISTRY = {
     icon: '📡',
     requires: ['channel', 'revenue'],
     configurableRoles: ['channel', 'revenue'],
+  },
+
+  // ── Custom ─────────────────────────────────────────────────────────────────
+  custom: {
+    component: CustomWidget,
+    props: {},
+    defaultSize: 'md',
+    label: 'Custom Widget',
+    description: 'Build your own — choose chart type, title, and columns.',
+    icon: '⚙️',
+    requires: [],
+    configurableRoles: [],
+    isCustom: true,
   },
 
   // ── Table ──────────────────────────────────────────────────────────────────

@@ -10,12 +10,12 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
-export default function LineChart({ data, config }) {
+export default function LineChart({ data, config, title: titleProp }) {
   const chartData = useMemo(() => buildChartData(data, config), [data, config])
 
   const primaryKey   = config.mappings?.revenue || 'revenue'
   const secondaryKey = config.mappings?.secondaryMetric
-  const title = primaryKey + (secondaryKey ? ` vs ${secondaryKey}` : '') + ' over time'
+  const title = titleProp ?? (primaryKey + (secondaryKey ? ` vs ${secondaryKey}` : '') + ' over time')
 
   if (!chartData.length) return <EmptyState title={title} />
 

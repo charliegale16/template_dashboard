@@ -6,7 +6,7 @@ const ROLE_GROUPS = [
     label: 'Core',
     roles: [
       { key: 'date',     label: 'Order date',      description: 'Date/time the order was placed.',         required: false },
-      { key: 'revenue',  label: 'Revenue',          description: 'Order value or revenue amount.',          required: true  },
+      { key: 'revenue',  label: 'Revenue',          description: 'Order value or revenue amount.',          required: false, recommended: true },
       { key: 'quantity', label: 'Quantity / units', description: 'Number of units sold per row.',           required: false },
       { key: 'orderId',  label: 'Order ID',         description: 'Unique order identifier.',                required: false },
     ],
@@ -98,7 +98,7 @@ export default function Step3Map({ config, onChange, accessToken }) {
       <div>
         <h2 className="text-xl font-semibold text-gray-900">Map your columns</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Tell the dashboard what each column represents. Only <span className="text-brand-600 font-medium">Revenue</span> is required — map as many others as you like.
+          Tell the dashboard what each column represents. Map at least one column to continue — not all tabs need revenue.
         </p>
       </div>
 
@@ -187,12 +187,12 @@ export default function Step3Map({ config, onChange, accessToken }) {
                       >
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-semibold text-gray-800">{role.label}</span>
-                          {role.required && (
-                            <span className="text-[10px] font-semibold text-brand-600 bg-brand-100 px-1.5 py-0.5 rounded">
-                              Required
+                          {role.recommended && !isMapped && (
+                            <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                              Recommended
                             </span>
                           )}
-                          {isMapped && !role.required && (
+                          {isMapped && (
                             <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                           )}
                         </div>
