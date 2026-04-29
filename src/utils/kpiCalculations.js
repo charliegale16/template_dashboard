@@ -1,32 +1,51 @@
 /**
- * KPI computation utilities.
+ * KPI computation utilities for ecommerce dashboards.
  *
  * All functions accept the standard { headers, rows } data shape and a
- * mappings object { date, primaryMetric, category, ... }.
+ * mappings object with ecommerce role keys (revenue, quantity, customerId, cost…).
  *
- * Period-over-period comparison splits the rows in half by their order in the
- * dataset (assumes rows are sorted chronologically, which is typical for
- * Sheets exports).  A date-column split is used when one is mapped.
+ * Period-over-period comparison splits rows in half by their dataset order
+ * (assumes chronological sort, typical for Sheets exports).
  */
 
-/** Sum of the primary metric column. */
-export function computeTotal(data, mappings) {
-  return sumColumn(data, mappings?.primaryMetric)
+/** Sum of the revenue column. */
+export function computeRevenue(data, mappings) {
+  return sumColumn(data, mappings?.revenue)
 }
 
-/** Number of data rows. */
+/** Number of data rows (= order count). */
 export function computeOrderCount(data) {
   return data?.rows?.length ?? 0
 }
 
-/**
- * Average order value = total / count.
- * Returns 0 when there are no rows to avoid divide-by-zero.
- */
+/** Average order value = revenue / order count. */
 export function computeAOV(data, mappings) {
   const count = computeOrderCount(data)
   if (!count) return 0
-  return computeTotal(data, mappings) / count
+  return computeRevenue(data, mappings) / count
+}
+
+/** Sum of the quantity column. */
+export function computeUnits(data, mappings) {
+  return sumColumn(data, mappings?.quantity)
+}
+
+/** Count of distinct values in the customerId column. */
+export function computeCustomers(data, mappings) {
+  const col = data?.headers?.indexOf(mappings?.customerId)
+  if (!data?.rows?.length || col === undefined || col === -1) return 0
+  return new Set(data.rows.map((r) => String(r[col] ?? '').trim()).filter(Boolean)).size
+}
+
+/**
+ * Gross margin % = (revenue - cost) / revenue × 100.
+ * Returns 0 when revenue is 0 or cost column is unmapped.
+ */
+export function computeMargin(data, mappings) {
+  const totalRevenue = sumColumn(data, mappings?.revenue)
+  const totalCost    = sumColumn(data, mappings?.cost)
+  if (!totalRevenue) return 0
+  return ((totalRevenue - totalCost) / totalRevenue) * 100
 }
 
 /** Most frequently occurring value in the category column. */
@@ -44,20 +63,12 @@ export function computeTopProduct(data, mappings) {
 
 /**
  * Period-over-period % change for any metric function.
- *
- * Splits rows into two equal halves and computes:
- *   (current - prior) / prior * 100
- *
- * Returns null when prior is 0 or data is too sparse to split.
- *
- * @param {object}   data      - { headers, rows }
- * @param {Function} metricFn  - one of computeTotal / computeOrderCount / computeAOV
- * @param {object}   mappings  - column-role mappings
- * @returns {number|null}
+ * Splits rows into two equal halves and computes (current - prior) / |prior| × 100.
+ * Returns null when prior is 0 or data is too sparse.
  */
 export function computeChange(data, metricFn, mappings) {
   if (!data?.rows?.length || data.rows.length < 2) return null
-  const half = Math.floor(data.rows.length / 2)
+  const half        = Math.floor(data.rows.length / 2)
   const priorData   = { headers: data.headers, rows: data.rows.slice(0, half) }
   const currentData = { headers: data.headers, rows: data.rows.slice(half) }
   const prior   = metricFn(priorData, mappings)

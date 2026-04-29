@@ -50,14 +50,39 @@ export function useConfig() {
       // Migrate old string-array widgets to object instances
       if (parsed.widgets?.length && typeof parsed.widgets[0] === 'string') {
         const defaultSizes = {
-          kpi_total: 'sm', kpi_orders: 'sm', kpi_aov: 'sm',
+          kpi_total: 'sm', kpi_revenue: 'sm', kpi_orders: 'sm', kpi_aov: 'sm',
+          kpi_units: 'sm', kpi_customers: 'sm', kpi_margin: 'sm',
           revenue_over_time: 'md', top_categories: 'md', data_table: 'full',
         }
         parsed.widgets = parsed.widgets.map((type) => ({
           id: crypto.randomUUID(),
-          type,
+          type: type === 'kpi_total' ? 'kpi_revenue' : type,
           size: defaultSizes[type] ?? 'md',
         }))
+      }
+      // Migrate widget object instances: kpi_total → kpi_revenue
+      if (parsed.widgets?.length && typeof parsed.widgets[0] === 'object') {
+        parsed.widgets = parsed.widgets.map((w) =>
+          w.type === 'kpi_total' ? { ...w, type: 'kpi_revenue' } : w
+        )
+      }
+      // Migrate primaryMetric → revenue in tabMappings
+      if (parsed.tabMappings) {
+        Object.values(parsed.tabMappings).forEach((m) => {
+          if (m?.primaryMetric && !m?.revenue) {
+            m.revenue = m.primaryMetric
+            delete m.primaryMetric
+          }
+        })
+      }
+      // Migrate primaryMetric → revenue in per-widget config overrides
+      if (parsed.widgets) {
+        parsed.widgets.forEach((w) => {
+          if (w.config?.primaryMetric && !w.config?.revenue) {
+            w.config.revenue = w.config.primaryMetric
+            delete w.config.primaryMetric
+          }
+        })
       }
       return { ...DEFAULT_CONFIG, ...parsed }
     } catch {

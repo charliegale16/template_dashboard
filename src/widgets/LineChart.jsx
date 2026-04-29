@@ -10,13 +10,10 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
-/**
- * LineChart — primary (and optional secondary) metric plotted over the date axis.
- */
 export default function LineChart({ data, config }) {
   const chartData = useMemo(() => buildChartData(data, config), [data, config])
 
-  const primaryKey = config.mappings?.primaryMetric || 'primary'
+  const primaryKey   = config.mappings?.revenue || 'revenue'
   const secondaryKey = config.mappings?.secondaryMetric
   const title = primaryKey + (secondaryKey ? ` vs ${secondaryKey}` : '') + ' over time'
 
@@ -72,26 +69,24 @@ export default function LineChart({ data, config }) {
 
 function buildChartData(data, config) {
   if (!data?.headers?.length) return []
-  const dateCol = data.headers.indexOf(config.mappings?.date)
-  const primaryCol = data.headers.indexOf(config.mappings?.primaryMetric)
+  const dateCol      = data.headers.indexOf(config.mappings?.date)
+  const primaryCol   = data.headers.indexOf(config.mappings?.revenue)
   const secondaryCol = config.mappings?.secondaryMetric
     ? data.headers.indexOf(config.mappings.secondaryMetric)
     : -1
 
   if (primaryCol === -1) return []
 
-  return data.rows
-    .map((row) => {
-      const point = {
-        date: dateCol !== -1 ? String(row[dateCol] ?? '') : '',
-        [config.mappings.primaryMetric]: parseFloat(row[primaryCol]) || 0,
-      }
-      if (secondaryCol !== -1) {
-        point[config.mappings.secondaryMetric] = parseFloat(row[secondaryCol]) || 0
-      }
-      return point
-    })
-    .filter((p) => p.date || true)
+  return data.rows.map((row) => {
+    const point = {
+      date: dateCol !== -1 ? String(row[dateCol] ?? '') : '',
+      [config.mappings.revenue]: parseFloat(row[primaryCol]) || 0,
+    }
+    if (secondaryCol !== -1) {
+      point[config.mappings.secondaryMetric] = parseFloat(row[secondaryCol]) || 0
+    }
+    return point
+  })
 }
 
 function shortNum(v) {

@@ -2,17 +2,35 @@ import React, { useEffect } from 'react'
 import { WIDGET_REGISTRY } from '../../widgets/registry'
 
 const ROLE_LABELS = {
-  date:            'Date column',
-  primaryMetric:   'Primary metric',
+  date:            'Order date',
+  revenue:         'Revenue',
+  quantity:        'Quantity / units',
+  orderId:         'Order ID',
+  customerId:      'Customer ID',
+  product:         'Product name',
+  category:        'Category',
+  region:          'Region / country',
+  status:          'Order status',
+  channel:         'Sales channel',
+  cost:            'Cost / COGS',
+  discount:        'Discount',
   secondaryMetric: 'Secondary metric',
-  category:        'Category / grouping',
 }
 
 const ROLE_DESCRIPTIONS = {
   date:            'X-axis for time-series charts.',
-  primaryMetric:   'The main numeric value this widget measures.',
-  secondaryMetric: 'Optional second line on the chart.',
-  category:        'Column used to group/split bars.',
+  revenue:         'Revenue or order value column.',
+  quantity:        'Units sold per order row.',
+  orderId:         'Unique order identifier.',
+  customerId:      'Customer ID for unique-customer count.',
+  product:         'Product name for top-products chart.',
+  category:        'Column used to group bars.',
+  region:          'Geographic dimension.',
+  status:          'Order status (completed, refunded…)',
+  channel:         'Sales channel (web, mobile…)',
+  cost:            'Cost of goods — used for margin %.',
+  discount:        'Discount or coupon amount.',
+  secondaryMetric: 'Optional second line on time-series charts.',
 }
 
 export default function WidgetConfigDrawer({

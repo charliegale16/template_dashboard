@@ -1,14 +1,59 @@
 import React, { useEffect, useState } from 'react'
 import { fetchSheetData } from '../../adapters/SheetsAdapter'
 
-const ROLES = [
-  { key: 'date',            label: 'Date column',       description: 'X-axis for time-series charts.',                       required: false },
-  { key: 'primaryMetric',   label: 'Primary metric',    description: 'Main numeric value to track (e.g. revenue, sessions).', required: true  },
-  { key: 'secondaryMetric', label: 'Secondary metric',  description: 'Optional second numeric series.',                       required: false },
-  { key: 'category',        label: 'Category column',   description: 'Groups data in bar charts and breakdowns.',             required: false },
+const ROLE_GROUPS = [
+  {
+    label: 'Core',
+    roles: [
+      { key: 'date',     label: 'Order date',      description: 'Date/time the order was placed.',         required: false },
+      { key: 'revenue',  label: 'Revenue',          description: 'Order value or revenue amount.',          required: true  },
+      { key: 'quantity', label: 'Quantity / units', description: 'Number of units sold per row.',           required: false },
+      { key: 'orderId',  label: 'Order ID',         description: 'Unique order identifier.',                required: false },
+    ],
+  },
+  {
+    label: 'Customer',
+    roles: [
+      { key: 'customerId', label: 'Customer ID', description: 'Enables unique customer count metrics.', required: false },
+    ],
+  },
+  {
+    label: 'Product',
+    roles: [
+      { key: 'product',  label: 'Product name', description: 'Product name for top-products breakdown.',  required: false },
+      { key: 'category', label: 'Category',     description: 'Product category for category breakdown.', required: false },
+    ],
+  },
+  {
+    label: 'Geography',
+    roles: [
+      { key: 'region', label: 'Region / country', description: 'Geographic dimension for regional charts.', required: false },
+    ],
+  },
+  {
+    label: 'Order details',
+    roles: [
+      { key: 'status',  label: 'Order status',  description: 'e.g. completed, refunded, pending.',    required: false },
+      { key: 'channel', label: 'Sales channel', description: 'e.g. web, mobile, email, marketplace.', required: false },
+    ],
+  },
+  {
+    label: 'Financials',
+    roles: [
+      { key: 'cost',     label: 'Cost / COGS', description: 'Cost of goods — enables gross margin.',    required: false },
+      { key: 'discount', label: 'Discount',    description: 'Discount or coupon amount per order.',    required: false },
+    ],
+  },
+  {
+    label: 'Advanced',
+    roles: [
+      { key: 'secondaryMetric', label: 'Secondary metric', description: 'Optional second line on time-series charts.', required: false },
+    ],
+  },
 ]
 
-const EMPTY_MAPPING = { date: '', primaryMetric: '', secondaryMetric: '', category: '' }
+const ALL_ROLES = ROLE_GROUPS.flatMap((g) => g.roles)
+const EMPTY_MAPPING = Object.fromEntries(ALL_ROLES.map((r) => [r.key, '']))
 
 export default function Step3Map({ config, onChange, accessToken }) {
   const availableTabs = config.sheetTabs?.length
@@ -20,7 +65,6 @@ export default function Step3Map({ config, onChange, accessToken }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // Fetch headers whenever the active tab changes
   useEffect(() => {
     if (!config.sheetId || !accessToken || !activeTab) return
     setLoading(true)
@@ -43,17 +87,18 @@ export default function Step3Map({ config, onChange, accessToken }) {
 
   const currentMappings = config.tabMappings?.[activeTab] || EMPTY_MAPPING
 
-  // Count how many tabs have a primaryMetric mapped
   const mappedTabCount = Object.values(config.tabMappings || {}).filter(
-    (m) => m?.primaryMetric
+    (m) => m?.revenue
   ).length
+
+  const mappedCount = ALL_ROLES.filter((r) => currentMappings[r.key]).length
 
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-xl font-semibold text-gray-900">Map your columns</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Assign column roles for each tab. Each tab keeps its own mappings independently.
+          Tell the dashboard what each column represents. Only <span className="text-brand-600 font-medium">Revenue</span> is required — map as many others as you like.
         </p>
       </div>
 
@@ -65,7 +110,7 @@ export default function Step3Map({ config, onChange, accessToken }) {
           </p>
           <div className="flex flex-wrap gap-2">
             {availableTabs.map((tab) => {
-              const mapped = Boolean(config.tabMappings?.[tab]?.primaryMetric)
+              const mapped = Boolean(config.tabMappings?.[tab]?.revenue)
               const isActive = activeTab === tab
               return (
                 <button
@@ -99,43 +144,77 @@ export default function Step3Map({ config, onChange, accessToken }) {
         </div>
       )}
 
-      {/* Role dropdowns */}
       {loading ? (
         <LoadingState />
       ) : error ? (
         <ErrorState message={error} />
+      ) : headers.length === 0 ? (
+        <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+          No column headers found for <strong>{activeTab}</strong>. Go back and verify your sheet connection.
+        </p>
       ) : (
-        <div className="space-y-3">
-          {ROLES.map((role) => (
-            <div key={role.key} className="p-4 rounded-xl border border-gray-100 bg-gray-50 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-800">{role.label}</span>
-                {role.required && (
-                  <span className="text-xs text-brand-600 font-medium bg-brand-50 px-1.5 py-0.5 rounded">
-                    Required
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-gray-500">{role.description}</p>
-              <select
-                className="input bg-white"
-                value={currentMappings[role.key] || ''}
-                onChange={(e) => handleMapping(role.key, e.target.value)}
+        <>
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>{mappedCount} of {ALL_ROLES.length} columns mapped</span>
+            {mappedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => onChange({ tabMappings: { ...config.tabMappings, [activeTab]: EMPTY_MAPPING } })}
+                className="text-gray-400 hover:text-red-500 transition-colors"
               >
-                <option value="">— Not mapped —</option>
-                {headers.map((h) => (
-                  <option key={h} value={h}>{h}</option>
-                ))}
-              </select>
-            </div>
-          ))}
+                Clear this tab
+              </button>
+            )}
+          </div>
 
-          {headers.length === 0 && (
-            <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-              No column headers found for <strong>{activeTab}</strong>. Go back and verify your sheet connection.
-            </p>
-          )}
-        </div>
+          <div className="space-y-4">
+            {ROLE_GROUPS.map((group) => (
+              <div key={group.label}>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  {group.label}
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {group.roles.map((role) => {
+                    const value = currentMappings[role.key] || ''
+                    const isMapped = Boolean(value)
+                    return (
+                      <div
+                        key={role.key}
+                        className={[
+                          'rounded-xl border p-3 space-y-1.5 transition-colors',
+                          isMapped ? 'border-brand-200 bg-brand-50/50' : 'border-gray-100 bg-gray-50',
+                        ].join(' ')}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-semibold text-gray-800">{role.label}</span>
+                          {role.required && (
+                            <span className="text-[10px] font-semibold text-brand-600 bg-brand-100 px-1.5 py-0.5 rounded">
+                              Required
+                            </span>
+                          )}
+                          {isMapped && !role.required && (
+                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-400 leading-snug">{role.description}</p>
+                        <select
+                          className="input bg-white text-xs py-1.5"
+                          value={value}
+                          onChange={(e) => handleMapping(role.key, e.target.value)}
+                        >
+                          <option value="">— Not mapped —</option>
+                          {headers.map((h) => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

@@ -20,7 +20,7 @@ export default function WidgetGrid({
   }
 
   const tabs = (config.sheetTabs || (config.sheetName ? [config.sheetName] : []))
-    .filter((tab) => config.tabMappings?.[tab]?.primaryMetric)
+    .filter((tab) => config.tabMappings?.[tab]?.revenue)
 
   if (!tabs.length) {
     return (
