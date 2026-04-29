@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSheetData } from '../../hooks/useSheetData'
 import { formatAge } from '../../utils/sheetCache'
+import { DATE_PRESETS, describeDateRange } from '../../utils/dateFilters'
 import WidgetGrid from './WidgetGrid'
 
 export default function DashboardRenderer({ config, saveConfig, auth }) {
@@ -46,7 +47,8 @@ export default function DashboardRenderer({ config, saveConfig, auth }) {
               <svg className="w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              Date filter
+              <span className="hidden sm:inline">{describeDateRange(config.dateRange)}</span>
+              <span className="sm:hidden">Dates</span>
             </button>
             <div className="flex items-center gap-1.5">
               {cachedAt && !loading && (
@@ -83,34 +85,58 @@ export default function DashboardRenderer({ config, saveConfig, auth }) {
       {/* Date filter panel */}
       {showDateFilter && (
         <div className="bg-white border-b border-gray-100 px-4 sm:px-6 lg:px-8 py-3">
-          <div className="max-w-7xl mx-auto flex items-center gap-4 flex-wrap">
-            <span className="text-xs font-medium text-gray-600">Date range:</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                className="input text-xs py-1 w-36"
-                value={config.dateRange?.start || ''}
-                onChange={(e) =>
-                  saveConfig({ dateRange: { ...config.dateRange, start: e.target.value } })
-                }
-              />
-              <span className="text-gray-400 text-xs">to</span>
-              <input
-                type="date"
-                className="input text-xs py-1 w-36"
-                value={config.dateRange?.end || ''}
-                onChange={(e) =>
-                  saveConfig({ dateRange: { ...config.dateRange, end: e.target.value } })
-                }
-              />
-            </div>
-            {(config.dateRange?.start || config.dateRange?.end) && (
+          <div className="max-w-7xl mx-auto flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-medium text-gray-600 shrink-0">Date range:</span>
+            <div className="flex flex-wrap gap-1.5">
+              {DATE_PRESETS.filter((p) => p.id !== 'custom').map((p) => {
+                const active = (config.dateRange?.preset || 'all_time') === p.id
+                return (
+                  <button
+                    key={p.id}
+                    className={[
+                      'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors',
+                      active
+                        ? 'bg-brand-600 text-white border-brand-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-brand-400',
+                    ].join(' ')}
+                    onClick={() => saveConfig({ dateRange: { preset: p.id, start: '', end: '' } })}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
               <button
-                className="text-xs text-brand-600 hover:underline"
-                onClick={() => saveConfig({ dateRange: { start: '', end: '' } })}
+                className={[
+                  'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors',
+                  config.dateRange?.preset === 'custom'
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-brand-400',
+                ].join(' ')}
+                onClick={() => saveConfig({ dateRange: { preset: 'custom', start: config.dateRange?.start || '', end: config.dateRange?.end || '' } })}
               >
-                Clear
+                Custom
               </button>
+            </div>
+            {config.dateRange?.preset === 'custom' && (
+              <div className="flex items-center gap-2 ml-1">
+                <input
+                  type="date"
+                  className="input text-xs py-1 w-36"
+                  value={config.dateRange?.start || ''}
+                  onChange={(e) =>
+                    saveConfig({ dateRange: { ...config.dateRange, start: e.target.value } })
+                  }
+                />
+                <span className="text-gray-400 text-xs">to</span>
+                <input
+                  type="date"
+                  className="input text-xs py-1 w-36"
+                  value={config.dateRange?.end || ''}
+                  onChange={(e) =>
+                    saveConfig({ dateRange: { ...config.dateRange, end: e.target.value } })
+                  }
+                />
+              </div>
             )}
           </div>
         </div>

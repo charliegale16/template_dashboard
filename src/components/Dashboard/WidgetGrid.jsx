@@ -5,10 +5,12 @@ import BarChart from '../../widgets/BarChart'
 import DataTable from '../../widgets/DataTable'
 
 const WIDGET_REGISTRY = {
-  kpi_total:         { component: KPICard,    span: 'col-span-1' },
-  revenue_over_time: { component: LineChart,  span: 'col-span-2' },
-  top_categories:    { component: BarChart,   span: 'col-span-2' },
-  data_table:        { component: DataTable,  span: 'col-span-full' },
+  kpi_total:         { component: KPICard,   span: 'col-span-1', props: { variant: 'total' } },
+  kpi_orders:        { component: KPICard,   span: 'col-span-1', props: { variant: 'orders' } },
+  kpi_aov:           { component: KPICard,   span: 'col-span-1', props: { variant: 'aov' } },
+  revenue_over_time: { component: LineChart, span: 'col-span-2' },
+  top_categories:    { component: BarChart,  span: 'col-span-2' },
+  data_table:        { component: DataTable, span: 'col-span-full' },
 }
 
 /**
@@ -59,10 +61,10 @@ export default function WidgetGrid({ widgets, filteredTabDataMap, config }) {
               {widgets.map((id) => {
                 const entry = WIDGET_REGISTRY[id]
                 if (!entry) return null
-                const { component: Widget, span } = entry
+                const { component: Widget, span, props: extraProps = {} } = entry
                 return (
                   <div key={id} className={span}>
-                    <Widget data={data} config={effectiveConfig} />
+                    <Widget data={data} config={effectiveConfig} {...extraProps} />
                   </div>
                 )
               })}

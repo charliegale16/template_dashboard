@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { fetchSheetData } from '../adapters/SheetsAdapter'
 import { getCached, setCached } from '../utils/sheetCache'
+import { resolveDateRange, filterRowsByDate } from '../utils/dateFilters'
 // Phase 2: import { fetchSheetData as fetchExcelData } from '../adapters/ExcelAdapter'
 
 /**
@@ -91,32 +92,17 @@ export function useSheetData(config, accessToken, onAuthError) {
   // Apply per-tab date filter using each tab's own column mappings
   const filteredTabDataMap = useMemo(() => {
     const out = {}
+    const { startMs, endMs } = resolveDateRange(config.dateRange)
     Object.entries(tabDataMap).forEach(([tab, data]) => {
       const mappings = config.tabMappings?.[tab] || {}
-      out[tab] = applyDateFilter(data, config.dateRange, mappings.date)
+      const dateColIndex = data.headers.indexOf(mappings.date || '')
+      out[tab] = {
+        headers: data.headers,
+        rows: filterRowsByDate(data.rows, dateColIndex, startMs, endMs),
+      }
     })
     return out
   }, [tabDataMap, config.tabMappings, config.dateRange])
 
   return { tabDataMap, filteredTabDataMap, loading, error, cachedAt, refetch }
-}
-
-function applyDateFilter(data, dateRange, dateColumn) {
-  const { start, end } = dateRange || {}
-  if (!start && !end) return data
-
-  const dateColIndex = data.headers.indexOf(dateColumn)
-  if (dateColIndex === -1) return data
-
-  const startMs = start ? new Date(start).getTime() : -Infinity
-  const endMs   = end   ? new Date(end).getTime()   : Infinity
-
-  return {
-    headers: data.headers,
-    rows: data.rows.filter((row) => {
-      const d = new Date(row[dateColIndex])
-      if (isNaN(d.getTime())) return true
-      return d.getTime() >= startMs && d.getTime() <= endMs
-    }),
-  }
 }

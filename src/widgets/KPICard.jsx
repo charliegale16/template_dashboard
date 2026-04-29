@@ -1,55 +1,81 @@
 import React, { useMemo } from 'react'
+import {
+  computeTotal,
+  computeOrderCount,
+  computeAOV,
+  computeChange,
+  formatMetric,
+} from '../utils/kpiCalculations'
 
-/**
- * KPICard — shows a total for the primary metric plus % change vs. the prior
- * half of the date range (simple period-over-period split).
- */
-export default function KPICard({ data, config }) {
-  const { total, change, label } = useMemo(() => {
-    if (!data?.headers?.length) return { total: null, change: null, label: '—' }
+const VARIANTS = {
+  total: {
+    fn: computeTotal,
+    label: (mappings) => mappings?.primaryMetric || 'Total',
+    format: (n, mappings) => {
+      const name = (mappings?.primaryMetric || '').toLowerCase()
+      const prefix = /revenue|sales|amount|price|cost|value/.test(name) ? '$' : ''
+      return formatMetric(n, prefix)
+    },
+  },
+  orders: {
+    fn: computeOrderCount,
+    label: () => 'Orders',
+    format: (n) => formatMetric(n),
+  },
+  aov: {
+    fn: computeAOV,
+    label: () => 'Avg Order Value',
+    format: (n) => formatMetric(n, '$'),
+  },
+}
 
-    const metricCol = data.headers.indexOf(config.mappings?.primaryMetric)
-    if (metricCol === -1) return { total: null, change: null, label: config.mappings?.primaryMetric || '—' }
+export default function KPICard({ data, config, variant = 'total' }) {
+  const variantCfg = VARIANTS[variant] ?? VARIANTS.total
 
-    const values = data.rows
-      .map((r) => parseFloat(r[metricCol]))
-      .filter((v) => !isNaN(v))
+  const { value, change, label, formatted } = useMemo(() => {
+    const mappings = config?.mappings
+    const label = variantCfg.label(mappings)
 
-    if (!values.length) return { total: 0, change: null, label: config.mappings.primaryMetric }
+    if (!data?.headers?.length) return { value: null, change: null, label, formatted: '—' }
 
-    const total = values.reduce((a, b) => a + b, 0)
+    const value = variantCfg.fn(data, mappings)
+    const change = computeChange(data, variantCfg.fn, mappings)
+    const formatted = variantCfg.format(value, mappings)
 
-    // Split into two halves for period-over-period %
-    const half = Math.floor(values.length / 2)
-    const prior = values.slice(0, half).reduce((a, b) => a + b, 0)
-    const current = values.slice(half).reduce((a, b) => a + b, 0)
-    const change = prior !== 0 ? ((current - prior) / prior) * 100 : null
+    return { value, change, label, formatted }
+  }, [data, config, variantCfg])
 
-    return { total, change, label: config.mappings.primaryMetric }
-  }, [data, config])
-
-  const formatted = total !== null ? formatNumber(total) : '—'
+  const isPositive = change !== null && change >= 0
 
   return (
-    <div className="card flex flex-col gap-1 min-h-[120px] justify-center">
+    <div className="card flex flex-col gap-2 min-h-[128px] justify-center">
       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide truncate">{label}</p>
-      <p className="text-3xl font-bold text-gray-900 tabular-nums">{formatted}</p>
-      {change !== null && (
-        <span
-          className={[
-            'inline-flex items-center gap-1 text-sm font-medium',
-            change >= 0 ? 'text-emerald-600' : 'text-red-500',
-          ].join(' ')}
-        >
-          {change >= 0 ? '↑' : '↓'} {Math.abs(change).toFixed(1)}% vs prior period
-        </span>
+      <p className="text-3xl font-bold text-gray-900 tabular-nums leading-none">{formatted}</p>
+      {change !== null ? (
+        <div className="flex items-center gap-1.5">
+          <span
+            className={[
+              'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-semibold',
+              isPositive
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-red-100 text-red-600',
+            ].join(' ')}
+          >
+            <svg
+              className="w-3 h-3"
+              viewBox="0 0 12 12"
+              fill="currentColor"
+              style={{ transform: isPositive ? 'none' : 'rotate(180deg)' }}
+            >
+              <path d="M6 2l4 5H2l4-5z" />
+            </svg>
+            {Math.abs(change).toFixed(1)}%
+          </span>
+          <span className="text-xs text-gray-400">vs prior period</span>
+        </div>
+      ) : (
+        <span className="text-xs text-gray-300">No prior data</span>
       )}
     </div>
   )
-}
-
-function formatNumber(n) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n % 1 === 0 ? n.toLocaleString() : n.toFixed(2)
 }

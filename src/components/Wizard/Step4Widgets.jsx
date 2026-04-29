@@ -3,9 +3,23 @@ import React from 'react'
 export const AVAILABLE_WIDGETS = [
   {
     id: 'kpi_total',
-    label: 'KPI Card',
-    description: 'Single metric total with % change vs. prior period.',
+    label: 'KPI Card — Total',
+    description: 'Sum of the primary metric with % change vs. prior period.',
     icon: '📊',
+    requires: ['primaryMetric'],
+  },
+  {
+    id: 'kpi_orders',
+    label: 'KPI Card — Orders',
+    description: 'Row count (total number of records) with % change.',
+    icon: '🛒',
+    requires: [],
+  },
+  {
+    id: 'kpi_aov',
+    label: 'KPI Card — Avg Order Value',
+    description: 'Primary metric ÷ row count with % change.',
+    icon: '💰',
     requires: ['primaryMetric'],
   },
   {

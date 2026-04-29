@@ -18,6 +18,7 @@ export const DEFAULT_CONFIG = {
   tabMappings: {},
   widgets: [],             // widget ids selected in Step 4
   dateRange: {
+    preset: 'all_time',
     start: '',
     end: '',
   },
