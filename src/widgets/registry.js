@@ -12,6 +12,7 @@ export const WIDGET_REGISTRY = {
     description: 'Sum of the primary metric with % change vs. prior period.',
     icon: '📊',
     requires: ['primaryMetric'],
+    configurableRoles: ['primaryMetric'],
   },
   kpi_orders: {
     component: KPICard,
@@ -21,6 +22,7 @@ export const WIDGET_REGISTRY = {
     description: 'Row count with % change vs. prior period.',
     icon: '🛒',
     requires: [],
+    configurableRoles: [],
   },
   kpi_aov: {
     component: KPICard,
@@ -30,6 +32,7 @@ export const WIDGET_REGISTRY = {
     description: 'Primary metric ÷ row count with % change.',
     icon: '💰',
     requires: ['primaryMetric'],
+    configurableRoles: ['primaryMetric'],
   },
   revenue_over_time: {
     component: LineChart,
@@ -39,6 +42,7 @@ export const WIDGET_REGISTRY = {
     description: 'Primary metric plotted over time.',
     icon: '📈',
     requires: ['date', 'primaryMetric'],
+    configurableRoles: ['date', 'primaryMetric', 'secondaryMetric'],
   },
   top_categories: {
     component: BarChart,
@@ -48,6 +52,7 @@ export const WIDGET_REGISTRY = {
     description: 'Primary metric broken down by category.',
     icon: '📉',
     requires: ['category', 'primaryMetric'],
+    configurableRoles: ['primaryMetric', 'category'],
   },
   data_table: {
     component: DataTable,
@@ -57,6 +62,7 @@ export const WIDGET_REGISTRY = {
     description: 'Paginated raw data view with sorting.',
     icon: '🗂️',
     requires: [],
+    configurableRoles: [],
   },
 }
 
