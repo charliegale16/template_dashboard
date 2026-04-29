@@ -3,9 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useSheetData } from '../../hooks/useSheetData'
 import WidgetGrid from './WidgetGrid'
 
-export default function DashboardRenderer({ config, saveConfig }) {
+export default function DashboardRenderer({ config, saveConfig, auth }) {
   const navigate = useNavigate()
-  const { filteredData, loading, error, refetch } = useSheetData(config)
+
+  function handleAuthError() {
+    auth.logout()
+    navigate('/setup')
+  }
+
+  const { filteredData, loading, error, refetch } = useSheetData(config, auth.accessToken, handleAuthError)
   const [showDateFilter, setShowDateFilter] = useState(false)
 
   const title = config.dashboardName || 'Analytics Dashboard'

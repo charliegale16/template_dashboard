@@ -2,8 +2,29 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import DashboardRenderer from '../components/Dashboard/DashboardRenderer'
 
-export default function DashboardPage({ config, saveConfig, hasConfig }) {
+export default function DashboardPage({ config, saveConfig, hasConfig, auth }) {
   const navigate = useNavigate()
+
+  if (!auth.isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-brand-50 flex items-center justify-center px-4">
+        <div className="text-center max-w-sm">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-100 mb-5">
+            <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Session expired</h2>
+          <p className="text-gray-500 text-sm mb-6">
+            Your Google session has expired. Reconnect to continue viewing your dashboard.
+          </p>
+          <button className="btn-primary" onClick={() => navigate('/setup')}>
+            Reconnect →
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!hasConfig) {
     return (
@@ -26,5 +47,5 @@ export default function DashboardPage({ config, saveConfig, hasConfig }) {
     )
   }
 
-  return <DashboardRenderer config={config} saveConfig={saveConfig} />
+  return <DashboardRenderer config={config} saveConfig={saveConfig} auth={auth} />
 }

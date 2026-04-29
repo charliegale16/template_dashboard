@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { fetchSheet } from '../../adapters/SheetsAdapter'
+import { fetchSheetData } from '../../adapters/SheetsAdapter'
 
 const ROLES = [
   {
@@ -28,7 +28,7 @@ const ROLES = [
   },
 ]
 
-export default function Step3Map({ config, onChange }) {
+export default function Step3Map({ config, onChange, accessToken }) {
   const [headers, setHeaders] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -41,13 +41,13 @@ export default function Step3Map({ config, onChange }) {
 
   useEffect(() => {
     const tab = activeTab || config.sheetName
-    if (!config.sheetId || !config.apiKey || !tab) return
+    if (!config.sheetId || !accessToken || !tab) return
     setLoading(true)
-    fetchSheet({ sheetId: config.sheetId, apiKey: config.apiKey, sheetName: tab })
+    fetchSheetData(config.sheetId, tab, accessToken)
       .then((d) => setHeaders(d.headers))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [config.sheetId, config.apiKey, activeTab, config.sheetName])
+  }, [config.sheetId, accessToken, activeTab, config.sheetName])
 
   function handleTabSwitch(tab) {
     setActiveTab(tab)

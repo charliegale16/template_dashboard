@@ -1,46 +1,47 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchSheet } from '../adapters/SheetsAdapter'
-// Phase 2: import { fetchExcel } from '../adapters/ExcelAdapter'
+import { fetchSheetData } from '../adapters/SheetsAdapter'
+// Phase 2: import { fetchSheetData as fetchExcelData } from '../adapters/ExcelAdapter'
 
 /**
- * Fetches and caches data for the active config.
- * Applies an optional date range filter against the mapped date column.
+ * Fetches data for the active config tab and applies the date range filter.
  *
- * @param {object} config  - Dashboard config from useConfig
+ * @param {object}   config       - Dashboard config from useConfig
+ * @param {string}   accessToken  - OAuth 2.0 Bearer token from useAuth
+ * @param {Function} onAuthError  - Called when a 401 is returned; should logout + redirect
  * @returns {{ data, filteredData, loading, error, refetch }}
  */
-export function useSheetData(config) {
+export function useSheetData(config, accessToken, onAuthError) {
   const [data, setData] = useState({ headers: [], rows: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const fetch = useCallback(async () => {
-    if (!config.sheetId || !config.apiKey) return
+  const refetch = useCallback(async () => {
+    if (!config.sheetId || !config.sheetName || !accessToken) return
     setLoading(true)
     setError(null)
     try {
       // Phase 2: swap adapter based on config.source
-      // const adapter = config.source === 'excel' ? fetchExcel : fetchSheet
-      const result = await fetchSheet({
-        sheetId: config.sheetId,
-        apiKey: config.apiKey,
-        sheetName: config.sheetName,
-      })
+      // const fn = config.source === 'excel' ? fetchExcelData : fetchSheetData
+      const result = await fetchSheetData(config.sheetId, config.sheetName, accessToken)
       setData(result)
     } catch (err) {
+      if (err.status === 401) {
+        onAuthError?.()
+        return
+      }
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [config.sheetId, config.apiKey, config.sheetName, config.source])
+  }, [config.sheetId, config.sheetName, config.source, accessToken, onAuthError])
 
   useEffect(() => {
-    fetch()
-  }, [fetch])
+    refetch()
+  }, [refetch])
 
   const filteredData = applyDateFilter(data, config)
 
-  return { data, filteredData, loading, error, refetch: fetch }
+  return { data, filteredData, loading, error, refetch }
 }
 
 /**

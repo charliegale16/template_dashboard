@@ -10,7 +10,6 @@ export const DEFAULT_CONFIG = {
   dashboardName: '',
   source: 'sheets',        // 'sheets' | 'excel'
   sheetId: '',             // Google Sheet ID extracted from URL
-  apiKey: '',              // Google Sheets API key
   sheetName: '',           // Primary tab (always sheetTabs[0])
   sheetTabs: [],           // All selected tab names (ordered; first = primary)
   mappings: {

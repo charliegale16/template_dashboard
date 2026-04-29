@@ -1,20 +1,27 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Step1Source from '../components/Wizard/Step1Source'
+import Step1Connect from '../components/Wizard/Step1Connect'
 import Step2Connect from '../components/Wizard/Step2Connect'
 import Step3Map from '../components/Wizard/Step3Map'
 import Step4Widgets from '../components/Wizard/Step4Widgets'
 
 const STEPS = [
-  { label: 'Data source' },
   { label: 'Connect' },
+  { label: 'Select sheet' },
   { label: 'Map columns' },
   { label: 'Widgets' },
 ]
 
-export default function SetupPage({ config, saveConfig }) {
+export default function SetupPage({ config, saveConfig, auth }) {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
+
+  // Auto-advance from Step 1 once OAuth completes
+  useEffect(() => {
+    if (step === 0 && auth.isAuthenticated) {
+      setStep(1)
+    }
+  }, [auth.isAuthenticated, step])
 
   function handleChange(updates) {
     saveConfig(updates)
@@ -34,14 +41,17 @@ export default function SetupPage({ config, saveConfig }) {
   }
 
   function canAdvance() {
-    if (step === 0) return Boolean(config.source)
-    if (step === 1) return Boolean(config.sheetId && config.apiKey)
+    if (step === 0) return auth.isAuthenticated
+    if (step === 1) return Boolean(config.sheetId && config.sheetName)
     if (step === 2) return Boolean(config.mappings?.primaryMetric)
     if (step === 3) return Boolean(config.widgets?.length && config.dashboardName)
     return true
   }
 
-  const StepComponent = [Step1Source, Step2Connect, Step3Map, Step4Widgets][step]
+  const stepProps = { config, onChange: handleChange, accessToken: auth.accessToken }
+  const StepComponent = [Step1Connect, Step2Connect, Step3Map, Step4Widgets][step]
+  // Step1Connect needs auth instead of the generic props
+  const currentProps = step === 0 ? { auth } : stepProps
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-brand-50 flex items-center justify-center px-4 py-12">
@@ -85,7 +95,7 @@ export default function SetupPage({ config, saveConfig }) {
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
-          <StepComponent config={config} onChange={handleChange} />
+          <StepComponent {...currentProps} />
         </div>
 
         {/* Navigation */}

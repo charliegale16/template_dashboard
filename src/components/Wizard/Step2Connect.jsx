@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { extractSheetId, fetchSheet, listSheetNames } from '../../adapters/SheetsAdapter'
+import { extractSheetId, fetchSheetTabs, fetchSheetData } from '../../adapters/SheetsAdapter'
 
-export default function Step2Connect({ config, onChange }) {
+export default function Step2Connect({ config, onChange, accessToken }) {
   const [url, setUrl] = useState(
     config.sheetId
       ? `https://docs.google.com/spreadsheets/d/${config.sheetId}/edit`
@@ -19,32 +19,32 @@ export default function Step2Connect({ config, onChange }) {
   useEffect(() => {
     clearTimeout(debounceRef.current)
     const id = extractSheetId(url)
-    if (!id || !config.apiKey) return
-    debounceRef.current = setTimeout(() => loadTabs(id, config.apiKey), 600)
+    if (!id || !accessToken) return
+    debounceRef.current = setTimeout(() => loadTabs(id, accessToken), 600)
     return () => clearTimeout(debounceRef.current)
-  }, [url, config.apiKey])
+  }, [url, accessToken])
 
-  const loadPreview = useCallback(async (sheetId, apiKey, tabName) => {
+  const loadPreview = useCallback(async (sheetId, tabName) => {
     setPreviews((p) => ({ ...p, [tabName]: 'loading' }))
     try {
-      const data = await fetchSheet({ sheetId, apiKey, sheetName: tabName })
+      const data = await fetchSheetData(sheetId, tabName, accessToken)
       setPreviews((p) => ({ ...p, [tabName]: data }))
     } catch (err) {
       setPreviews((p) => ({ ...p, [tabName]: 'error:' + err.message }))
     }
-  }, [])
+  }, [accessToken])
 
-  const loadTabs = useCallback(async (sheetId, apiKey) => {
+  const loadTabs = useCallback(async (sheetId, token) => {
     setTabsLoading(true)
     setTabsError(null)
     try {
-      const names = await listSheetNames(sheetId, apiKey)
+      const names = await fetchSheetTabs(sheetId, token)
       setAvailableTabs(names)
       const validSelected = (config.sheetTabs || []).filter((t) => names.includes(t))
       const initial = validSelected.length ? validSelected : [names[0]]
       onChange({ sheetId, sheetTabs: initial, sheetName: initial[0] })
       setActivePreview(initial[0])
-      loadPreview(sheetId, apiKey, initial[0])
+      loadPreview(sheetId, initial[0])
     } catch (err) {
       setTabsError(err.message)
     } finally {
@@ -66,8 +66,8 @@ export default function Step2Connect({ config, onChange }) {
   function handlePreviewTab(tabName) {
     setActivePreview(tabName)
     const id = extractSheetId(url)
-    if (id && config.apiKey && !previews[tabName]) {
-      loadPreview(id, config.apiKey, tabName)
+    if (id && accessToken && !previews[tabName]) {
+      loadPreview(id, tabName)
     }
   }
 
@@ -76,48 +76,39 @@ export default function Step2Connect({ config, onChange }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-gray-900">Connect to Google Sheets</h2>
+        <h2 className="text-xl font-semibold text-gray-900">Select your sheet</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Paste your Sheet URL and API key — tabs load automatically.
+          Paste the URL of your Google Sheet — tabs load automatically.
         </p>
       </div>
 
-      <div className="space-y-3">
-        <div>
-          <label className="label">Google Sheet URL</label>
-          <input
-            className="input"
-            type="url"
-            placeholder="https://docs.google.com/spreadsheets/d/..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="label">
-            API Key
-            <a className="ml-2 text-brand-600 hover:underline font-normal" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Get one ↗</a>
-          </label>
-          <input
-            className="input"
-            type="password"
-            placeholder="AIza..."
-            value={config.apiKey}
-            onChange={(e) => onChange({ apiKey: e.target.value })}
-          />
-          <p className="text-xs text-gray-400 mt-1">Enable the Google Sheets API in your Google Cloud project first.</p>
-        </div>
+      <div>
+        <label className="label">Google Sheet URL</label>
+        <input
+          className="input"
+          type="url"
+          placeholder="https://docs.google.com/spreadsheets/d/..."
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        <p className="text-xs text-gray-400 mt-1">
+          The sheet must be accessible by your connected Google account.
+        </p>
       </div>
 
       {tabsError && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{tabsError}</div>
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          {tabsError}
+        </div>
       )}
 
       {(tabsLoading || availableTabs.length > 0) && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-gray-700">
-              {tabsLoading ? 'Fetching tabs…' : `${availableTabs.length} tab${availableTabs.length !== 1 ? 's' : ''} found — select which to use`}
+              {tabsLoading
+                ? 'Fetching tabs…'
+                : `${availableTabs.length} tab${availableTabs.length !== 1 ? 's' : ''} found — select which to use`}
             </p>
             {selectedTabs.length > 1 && (
               <span className="text-xs text-brand-600 font-medium">{selectedTabs.length} selected</span>
@@ -179,7 +170,6 @@ function TabCard({ tabName, isSelected, isPrimary, isPreviewing, onToggle, onPre
 
 function PreviewPanel({ tabName, data, totalTabs }) {
   if (!data) return null
-
   if (data === 'loading') {
     return (
       <div className="space-y-2">
@@ -190,7 +180,6 @@ function PreviewPanel({ tabName, data, totalTabs }) {
       </div>
     )
   }
-
   if (typeof data === 'string' && data.startsWith('error:')) {
     return (
       <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
@@ -198,10 +187,8 @@ function PreviewPanel({ tabName, data, totalTabs }) {
       </div>
     )
   }
-
   const visibleHeaders = data.headers.slice(0, 8)
   const visibleRows = data.rows.slice(0, 5)
-
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
