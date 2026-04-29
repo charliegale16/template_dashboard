@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSheetData } from '../../hooks/useSheetData'
+import { formatAge } from '../../utils/sheetCache'
 import WidgetGrid from './WidgetGrid'
 
 export default function DashboardRenderer({ config, saveConfig, auth }) {
@@ -11,8 +12,15 @@ export default function DashboardRenderer({ config, saveConfig, auth }) {
     navigate('/setup')
   }
 
-  const { filteredData, loading, error, refetch } = useSheetData(config, auth.accessToken, handleAuthError)
+  const { filteredData, loading, error, cachedAt, refetch } = useSheetData(config, auth.accessToken, handleAuthError)
   const [showDateFilter, setShowDateFilter] = useState(false)
+
+  // Tick every 30s so the "X min ago" label stays accurate without a refetch
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const title = config.dashboardName || 'Analytics Dashboard'
 
@@ -40,12 +48,24 @@ export default function DashboardRenderer({ config, saveConfig, auth }) {
               </svg>
               Date filter
             </button>
-            <button className="btn-secondary text-xs px-3 py-1.5" onClick={refetch} disabled={loading}>
-              <svg className="w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              {loading ? 'Refreshing…' : 'Refresh'}
-            </button>
+            <div className="flex items-center gap-1.5">
+              {cachedAt && !loading && (
+                <span className="text-xs text-gray-400 hidden sm:inline">
+                  {formatAge(cachedAt)}
+                </span>
+              )}
+              <button
+                className="btn-secondary text-xs px-3 py-1.5"
+                onClick={() => refetch(true)}
+                disabled={loading}
+                title="Force-fetch fresh data from Google Sheets"
+              >
+                <svg className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {loading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
             <button
               className="btn-primary text-xs px-3 py-1.5"
               onClick={() => navigate('/setup')}

@@ -1,22 +1,41 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchSheetData } from '../adapters/SheetsAdapter'
+import { getCached, setCached, TTL_MS } from '../utils/sheetCache'
 // Phase 2: import { fetchSheetData as fetchExcelData } from '../adapters/ExcelAdapter'
 
 /**
- * Fetches data for the active config tab and applies the date range filter.
+ * Fetches sheet data with a localStorage cache (TTL = 5 minutes).
+ *
+ * On mount the hook hydrates immediately from cache if a fresh entry exists —
+ * zero API calls, zero quota cost.  A stale or missing entry triggers a live
+ * fetch.  Calling refetch(true) bypasses the cache and always goes live.
  *
  * @param {object}   config       - Dashboard config from useConfig
  * @param {string}   accessToken  - OAuth 2.0 Bearer token from useAuth
- * @param {Function} onAuthError  - Called when a 401 is returned; should logout + redirect
- * @returns {{ data, filteredData, loading, error, refetch }}
+ * @param {Function} onAuthError  - Called on 401; should logout + redirect
+ * @returns {{ data, filteredData, loading, error, cachedAt, refetch }}
  */
 export function useSheetData(config, accessToken, onAuthError) {
-  const [data, setData] = useState({ headers: [], rows: [] })
-  const [loading, setLoading] = useState(false)
+  const cachedEntry = getCached(config.sheetId, config.sheetName)
+
+  const [data, setData] = useState(cachedEntry?.data ?? { headers: [], rows: [] })
+  const [cachedAt, setCachedAt] = useState(cachedEntry?.cachedAt ?? null)
+  const [loading, setLoading] = useState(!cachedEntry)
   const [error, setError] = useState(null)
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (force = false) => {
     if (!config.sheetId || !config.sheetName || !accessToken) return
+
+    if (!force) {
+      const entry = getCached(config.sheetId, config.sheetName)
+      if (entry) {
+        setData(entry.data)
+        setCachedAt(entry.cachedAt)
+        setLoading(false)
+        return
+      }
+    }
+
     setLoading(true)
     setError(null)
     try {
@@ -24,6 +43,8 @@ export function useSheetData(config, accessToken, onAuthError) {
       // const fn = config.source === 'excel' ? fetchExcelData : fetchSheetData
       const result = await fetchSheetData(config.sheetId, config.sheetName, accessToken)
       setData(result)
+      const ts = setCached(config.sheetId, config.sheetName, result)
+      setCachedAt(ts)
     } catch (err) {
       if (err.status === 401) {
         onAuthError?.()
@@ -36,18 +57,14 @@ export function useSheetData(config, accessToken, onAuthError) {
   }, [config.sheetId, config.sheetName, config.source, accessToken, onAuthError])
 
   useEffect(() => {
-    refetch()
+    refetch(false)
   }, [refetch])
 
   const filteredData = applyDateFilter(data, config)
 
-  return { data, filteredData, loading, error, refetch }
+  return { data, filteredData, loading, error, cachedAt, refetch }
 }
 
-/**
- * Filters rows by the configured date range.
- * Rows with unparseable dates are kept to avoid silent data loss.
- */
 function applyDateFilter(data, config) {
   const { start, end } = config.dateRange || {}
   if (!start && !end) return data
