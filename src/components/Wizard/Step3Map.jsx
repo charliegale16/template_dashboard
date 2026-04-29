@@ -32,15 +32,27 @@ export default function Step3Map({ config, onChange }) {
   const [headers, setHeaders] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  // activeTab drives which tab's columns are shown in the dropdowns.
+  // Defaults to the primary tab (sheetName). Changing it updates sheetName so
+  // useSheetData always fetches from the tab whose columns are mapped.
+  const [activeTab, setActiveTab] = useState(config.sheetName || '')
+
+  const availableTabs = config.sheetTabs || (config.sheetName ? [config.sheetName] : [])
 
   useEffect(() => {
-    if (!config.sheetId || !config.apiKey) return
+    const tab = activeTab || config.sheetName
+    if (!config.sheetId || !config.apiKey || !tab) return
     setLoading(true)
-    fetchSheet({ sheetId: config.sheetId, apiKey: config.apiKey, sheetName: config.sheetName })
+    fetchSheet({ sheetId: config.sheetId, apiKey: config.apiKey, sheetName: tab })
       .then((d) => setHeaders(d.headers))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [config.sheetId, config.apiKey, config.sheetName])
+  }, [config.sheetId, config.apiKey, activeTab, config.sheetName])
+
+  function handleTabSwitch(tab) {
+    setActiveTab(tab)
+    onChange({ sheetName: tab, mappings: { date: '', primaryMetric: '', secondaryMetric: '', category: '' } })
+  }
 
   function handleMapping(role, value) {
     onChange({ mappings: { ...config.mappings, [role]: value } })
@@ -57,6 +69,35 @@ export default function Step3Map({ config, onChange }) {
           Tell the dashboard which column serves which role. These drive all widgets automatically.
         </p>
       </div>
+
+      {availableTabs.length > 1 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Map columns from tab:</p>
+          <div className="flex flex-wrap gap-2">
+            {availableTabs.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => handleTabSwitch(tab)}
+                className={[
+                  'px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
+                  (activeTab || config.sheetName) === tab
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-brand-400',
+                ].join(' ')}
+              >
+                {tab}
+                {config.sheetTabs?.[0] === tab && (
+                  <span className="ml-1.5 text-[10px] opacity-70">primary</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-amber-600">
+            Switching tabs clears existing mappings.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-4">
         {ROLES.map((role) => (

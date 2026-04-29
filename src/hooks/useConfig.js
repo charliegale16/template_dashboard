@@ -11,7 +11,8 @@ export const DEFAULT_CONFIG = {
   source: 'sheets',        // 'sheets' | 'excel'
   sheetId: '',             // Google Sheet ID extracted from URL
   apiKey: '',              // Google Sheets API key
-  sheetName: '',           // Tab name within the sheet
+  sheetName: '',           // Primary tab (always sheetTabs[0])
+  sheetTabs: [],           // All selected tab names (ordered; first = primary)
   mappings: {
     date: '',              // column header mapped to the date axis
     primaryMetric: '',     // main numeric metric
