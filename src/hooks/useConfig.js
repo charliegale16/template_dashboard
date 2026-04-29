@@ -47,6 +47,18 @@ export function useConfig() {
           [parsed.sheetName]: parsed.mappings,
         }
       }
+      // Migrate old string-array widgets to object instances
+      if (parsed.widgets?.length && typeof parsed.widgets[0] === 'string') {
+        const defaultSizes = {
+          kpi_total: 'sm', kpi_orders: 'sm', kpi_aov: 'sm',
+          revenue_over_time: 'md', top_categories: 'md', data_table: 'full',
+        }
+        parsed.widgets = parsed.widgets.map((type) => ({
+          id: crypto.randomUUID(),
+          type,
+          size: defaultSizes[type] ?? 'md',
+        }))
+      }
       return { ...DEFAULT_CONFIG, ...parsed }
     } catch {
       return { ...DEFAULT_CONFIG }
