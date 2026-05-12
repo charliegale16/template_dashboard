@@ -1,32 +1,34 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
+import GridLayout from 'react-grid-layout'
+import 'react-grid-layout/css/styles.css'
+import 'react-resizable/css/styles.css'
+import { useAuth } from '../hooks/useAuth'
 import { useKPIs } from '../hooks/useKPIs'
 import { loadSource, loadRows } from '../hooks/useDataSource'
-import { computeKPI, formatKPI, getChartData, STROKE_COLOR, STROKE_COLOR_2 } from '../utils/formulaEngine'
+import {
+  computeKPI, formatKPI, getChartData,
+  applyFilters, FILTER_OPERATORS,
+  STROKE_COLOR, STROKE_COLOR_2,
+} from '../utils/formulaEngine'
 import { exportCSV, printDashboard } from '../utils/exportUtils'
+import { useDashboardLayout } from '../hooks/useDashboardLayout'
+import { useSheetSync } from '../hooks/useSheetSync'
+import { SYNC_SCHEDULES, MIN_SYNC_INTERVAL_S } from '../features/integrations/sheetSyncService'
 
-// ── Colour system ─────────────────────────────────────────────────────────────
+// ── Time helper ───────────────────────────────────────────────────────────────
 
-const BORDER_COLOR = {
-  blue:    'border-l-blue-500',
-  emerald: 'border-l-emerald-500',
-  amber:   'border-l-amber-500',
-  red:     'border-l-red-500',
-  purple:  'border-l-purple-500',
-  gray:    'border-l-gray-400',
-}
-
-const TEXT_COLOR = {
-  blue:    'text-blue-600',
-  emerald: 'text-emerald-600',
-  amber:   'text-amber-600',
-  red:     'text-red-600',
-  purple:  'text-purple-600',
-  gray:    'text-gray-500',
+function timeAgo(iso) {
+  if (!iso) return null
+  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (secs < 60)   return 'just now'
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
+  return `${Math.floor(secs / 86400)}d ago`
 }
 
 // ── Date detection ────────────────────────────────────────────────────────────
@@ -41,101 +43,81 @@ function isDateColumn(header) {
 function parseDate(val) {
   if (!val) return null
   const s = String(val).trim()
-
-  // Try ISO first (YYYY-MM-DD and similar)
   let d = new Date(s)
   if (!isNaN(d)) return d
-
-  // MM/DD/YYYY
   const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (mdy) {
     d = new Date(`${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`)
     if (!isNaN(d)) return d
   }
-
-  // DD/MM/YYYY (try if first number > 12)
-  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (dmy && parseInt(dmy[1], 10) > 12) {
-    d = new Date(`${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`)
-    if (!isNaN(d)) return d
-  }
-
   return null
-}
-
-function toDateKey(d) {
-  return d.toISOString().slice(0, 10)
 }
 
 // ── Date filter ───────────────────────────────────────────────────────────────
 
-// filter shape: { type: 'all' | 'days' | 'ytd' | 'year', value: null | number }
 const ROLLING_FILTERS = [
-  { label: 'All',       type: 'all',  value: null },
-  { label: 'Last 90d',  type: 'days', value: 90   },
-  { label: 'Last 30d',  type: 'days', value: 30   },
-  { label: 'Last 7d',   type: 'days', value: 7    },
-  { label: 'YTD',       type: 'ytd',  value: null },
+  { label: 'All',      type: 'all',  value: null },
+  { label: 'Last 90d', type: 'days', value: 90   },
+  { label: 'Last 30d', type: 'days', value: 30   },
+  { label: 'Last 7d',  type: 'days', value: 7    },
+  { label: 'YTD',      type: 'ytd',  value: null },
 ]
 
-function filterMatch(filter, other) {
-  return filter.type === other.type && filter.value === other.value
+function filterMatch(a, b) {
+  return a.type === b.type && a.value === b.value
 }
 
 function filterRowsByDate(rows, dateCol, filter) {
   if (!dateCol || filter.type === 'all') return rows
   const now = new Date()
-
   return rows.filter((r) => {
     const d = parseDate(r.data?.[dateCol])
     if (!d) return false
-
     if (filter.type === 'days') {
-      const cutoff = new Date()
-      cutoff.setDate(now.getDate() - filter.value)
+      const cutoff = new Date(); cutoff.setDate(now.getDate() - filter.value)
       return d >= cutoff
     }
-    if (filter.type === 'ytd') {
-      const yearStart = new Date(now.getFullYear(), 0, 1)
-      return d >= yearStart && d <= now
-    }
-    if (filter.type === 'year') {
-      return d.getFullYear() === filter.value
-    }
+    if (filter.type === 'ytd') return d >= new Date(now.getFullYear(), 0, 1) && d <= now
+    if (filter.type === 'year') return d.getFullYear() === filter.value
     return true
   })
 }
 
-// ── Chart helpers ─────────────────────────────────────────────────────────────
+// ── Previous period for trend indicators ──────────────────────────────────────
 
-function toNum(val) {
-  return parseFloat(String(val ?? '').replace(/[$£€,%\s,]/g, '')) || 0
-}
+function buildPreviousPeriodRows(allRows, dateCol, filter, colFilters) {
+  if (!dateCol || filter.type === 'all') return []
+  const now = new Date()
 
-function buildChartData(rows, dateCol, numericCol) {
-  const map = new Map()
-  for (const r of rows) {
-    const d = parseDate(r.data?.[dateCol])
-    if (!d) continue
-    const key = toDateKey(d)
-    map.set(key, (map.get(key) ?? 0) + toNum(r.data?.[numericCol]))
+  let prevRows = []
+
+  if (filter.type === 'days') {
+    const days = filter.value
+    const periodEnd   = new Date(); periodEnd.setDate(now.getDate() - days)
+    const periodStart = new Date(); periodStart.setDate(now.getDate() - days * 2)
+    prevRows = allRows.filter((r) => {
+      const d = parseDate(r.data?.[dateCol])
+      return d && d >= periodStart && d < periodEnd
+    })
+  } else if (filter.type === 'ytd') {
+    const yearStart = new Date(now.getFullYear() - 1, 0, 1)
+    const yearCutoff = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
+    prevRows = allRows.filter((r) => {
+      const d = parseDate(r.data?.[dateCol])
+      return d && d >= yearStart && d <= yearCutoff
+    })
+  } else if (filter.type === 'year') {
+    prevRows = allRows.filter((r) => {
+      const d = parseDate(r.data?.[dateCol])
+      return d && d.getFullYear() === filter.value - 1
+    })
   }
-  return [...map.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, value]) => ({ date, value }))
+
+  if (colFilters?.length) prevRows = applyFilters(prevRows, colFilters)
+  return prevRows
 }
 
-function findFirstNumericCol(headers, rows) {
-  if (!rows.length) return null
-  for (const h of headers) {
-    const sample = rows.slice(0, 20).map((r) => r.data?.[h])
-    const numeric = sample.filter((v) => v !== '' && !isNaN(toNum(v)) && toNum(v) !== 0)
-    if (numeric.length > sample.length * 0.5) return h
-  }
-  return null
-}
-
-// ── Shared Y-axis formatter ───────────────────────────────────────────────────
+// ── Shared chart helpers ──────────────────────────────────────────────────────
 
 function shortNum(v) {
   if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
@@ -145,81 +127,148 @@ function shortNum(v) {
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
-function KPICard({ kpi, rows }) {
-  const value = useMemo(() => computeKPI(rows, kpi.formula), [rows, kpi.formula])
+function KPICard({ kpi, rows, prevRows }) {
+  const value     = useMemo(() => computeKPI(rows, kpi.formula),     [rows, kpi.formula])
+  const prevValue = useMemo(() => computeKPI(prevRows, kpi.formula), [prevRows, kpi.formula])
   const formatted = formatKPI(value, kpi.format)
-  const borderCls = BORDER_COLOR[kpi.color] ?? 'border-l-blue-500'
-  const textCls = TEXT_COLOR[kpi.color] ?? 'text-blue-600'
+
+  const trendPct = useMemo(() => {
+    if (!prevRows?.length || prevValue == null || prevValue === 0) return null
+    return ((value - prevValue) / Math.abs(prevValue)) * 100
+  }, [value, prevValue, prevRows])
+
+  const isUp = trendPct !== null && trendPct >= 0
 
   return (
-    <div className={`bg-white rounded-xl border border-l-4 border-gray-100 ${borderCls} p-5 flex flex-col gap-1`}>
-      <p className="text-xs font-medium text-gray-500 truncate">{kpi.name}</p>
-      <p className={`text-2xl font-bold ${textCls} leading-tight`}>{formatted}</p>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-1 h-full">
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">{kpi.name}</p>
+      <p className="text-3xl font-bold text-gray-900 dark:text-white leading-tight">{formatted}</p>
+      {trendPct !== null && (
+        <p className={`text-xs font-medium flex items-center gap-0.5 mt-0.5 ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+          {isUp ? (
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+            </svg>
+          ) : (
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+            </svg>
+          )}
+          {Math.abs(trendPct).toFixed(1)}% vs prior period
+        </p>
+      )}
     </div>
   )
 }
 
-// ── Chart widgets ─────────────────────────────────────────────────────────────
+// ── Chart Widget ──────────────────────────────────────────────────────────────
 
 function ChartWidget({ widget, rows }) {
-  const data = useMemo(() => getChartData(rows, widget.formula), [rows, widget.formula])
-  const wt = widget.formula?.widget_type
-  const stroke1 = STROKE_COLOR[widget.color] ?? '#3b82f6'
+  const data    = useMemo(() => getChartData(rows, widget.formula), [rows, widget.formula])
+  const wt      = widget.formula?.widget_type
+  const stroke1 = STROKE_COLOR[widget.color]  ?? '#3b82f6'
   const stroke2 = STROKE_COLOR_2[widget.color] ?? '#f59e0b'
 
   const axisProps = {
-    tick: { fontSize: 11, fill: '#9ca3af' },
+    tick:     { fontSize: 11, fill: '#9ca3af' },
     tickLine: false,
     axisLine: false,
   }
-
   const tooltipStyle = {
     contentStyle: { fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' },
     formatter: shortNum,
   }
 
-  if (!data.length) {
-    return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-        <p className="text-sm font-semibold text-gray-800 mb-1">{widget.name}</p>
-        <p className="text-xs text-gray-400">No data available for this chart.</p>
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm h-full flex flex-col">
+      {/* Drag handle header */}
+      <div className="drag-handle flex items-center px-5 pt-4 pb-2 cursor-grab active:cursor-grabbing shrink-0">
+        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex-1 truncate">{widget.name}</p>
+        <svg className="w-4 h-4 text-gray-300 dark:text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+          <circle cx="9" cy="6"  r="1.5"/><circle cx="15" cy="6"  r="1.5"/>
+          <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+          <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+        </svg>
       </div>
-    )
-  }
+
+      <div className="flex-1 px-4 pb-4 min-h-0">
+        {!data.length ? (
+          <p className="text-xs text-gray-400 mt-2">No data available for this chart.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            {wt === 'bar_chart' ? (
+              <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                <XAxis dataKey="x" {...axisProps} interval={0} />
+                <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="y" name={widget.formula?.y_label || widget.formula?.y_column || 'Value'} fill={stroke1} radius={[3,3,0,0]} maxBarSize={48} />
+              </BarChart>
+            ) : wt === 'comparison' ? (
+              <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="x" {...axisProps} interval="preserveStartEnd" />
+                <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
+                <Tooltip {...tooltipStyle} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="y1" name={widget.formula?.y1_label || 'Series 1'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                <Line type="monotone" dataKey="y2" name={widget.formula?.y2_label || 'Series 2'} stroke={stroke2} strokeWidth={2} dot={false} strokeDasharray="5 3" activeDot={{ r: 4, strokeWidth: 0 }} />
+              </LineChart>
+            ) : (
+              <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="x" {...axisProps} interval="preserveStartEnd" />
+                <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
+                <Tooltip {...tooltipStyle} />
+                <Line type="monotone" dataKey="y" name={widget.formula?.y_label || widget.formula?.y_column || 'Value'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+              </LineChart>
+            )}
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Chart Grid ────────────────────────────────────────────────────────────────
+
+const ROW_HEIGHT = 40
+const GRID_GAP   = 12
+const GRID_COLS  = 12
+
+function ChartGrid({ widgets, rows, layout, onLayoutChange, layoutLoaded }) {
+  const containerRef = useRef(null)
+  const [width, setWidth] = useState(900)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    ro.observe(containerRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  if (!layoutLoaded) return null
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-      <p className="text-sm font-semibold text-gray-800 mb-4">{widget.name}</p>
-      <ResponsiveContainer width="100%" height={260}>
-        {wt === 'bar_chart' ? (
-          <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-            <XAxis dataKey="x" {...axisProps} interval={0} />
-            <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
-            <Tooltip {...tooltipStyle} />
-            <Bar dataKey="y" name={widget.formula?.y_label || widget.formula?.y_column || 'Value'} fill={stroke1} radius={[3, 3, 0, 0]} maxBarSize={48} />
-          </BarChart>
-        ) : wt === 'comparison' ? (
-          <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="x" {...axisProps} interval="preserveStartEnd" />
-            <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
-            <Tooltip {...tooltipStyle} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Line type="monotone" dataKey="y1" name={widget.formula?.y1_label || 'Series 1'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-            <Line type="monotone" dataKey="y2" name={widget.formula?.y2_label || 'Series 2'} stroke={stroke2} strokeWidth={2} dot={false} strokeDasharray="5 3" activeDot={{ r: 4, strokeWidth: 0 }} />
-          </LineChart>
-        ) : (
-          // line_chart
-          <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="x" {...axisProps} interval="preserveStartEnd" />
-            <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
-            <Tooltip {...tooltipStyle} />
-            <Line type="monotone" dataKey="y" name={widget.formula?.y_label || widget.formula?.y_column || 'Value'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-          </LineChart>
-        )}
-      </ResponsiveContainer>
+    <div ref={containerRef} className="w-full">
+      <GridLayout
+        layout={layout}
+        cols={GRID_COLS}
+        rowHeight={ROW_HEIGHT}
+        width={width}
+        margin={[GRID_GAP, GRID_GAP]}
+        containerPadding={[0, 0]}
+        draggableHandle=".drag-handle"
+        onLayoutChange={onLayoutChange}
+        isResizable
+        isDraggable
+      >
+        {widgets.map((w) => (
+          <div key={w.id}>
+            <ChartWidget widget={w} rows={rows} />
+          </div>
+        ))}
+      </GridLayout>
     </div>
   )
 }
@@ -229,51 +278,60 @@ function ChartWidget({ widget, rows }) {
 function Skeleton() {
   return (
     <div className="space-y-6 animate-pulse">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-24 bg-white rounded-xl border border-gray-100" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-28 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700" />
         ))}
       </div>
-      <div className="h-64 bg-white rounded-xl border border-gray-100" />
+      <div className="h-64 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700" />
     </div>
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { sourceId } = useParams()
   const navigate = useNavigate()
+  const { user, accessToken } = useAuth()
+  const userId = user?.id
+
   const { kpis, loading: kpisLoading } = useKPIs(sourceId)
 
-  const [source, setSource] = useState(null)
-  const [allRows, setAllRows] = useState([])
-  const [loadError, setLoadError] = useState(null)
+  // ── Data loading ──────────────────────────────────────────────────────────
+  const [source,      setSource]      = useState(null)
+  const [allRows,     setAllRows]     = useState([])
+  const [loadError,   setLoadError]   = useState(null)
   const [dataLoading, setDataLoading] = useState(true)
-  const [dateFilter, setDateFilter] = useState({ type: 'all', value: null })
 
-  // Load source metadata + rows
   useEffect(() => {
     if (!sourceId) return
     setDataLoading(true)
     setLoadError(null)
-
     Promise.all([loadSource(sourceId), loadRows(sourceId)])
-      .then(([src, rows]) => {
-        setSource(src)
-        setAllRows(rows)
-      })
+      .then(([src, rows]) => { setSource(src); setAllRows(rows) })
       .catch((err) => setLoadError(err.message))
       .finally(() => setDataLoading(false))
   }, [sourceId])
 
-  // Detect date column
+  const isSheet = Boolean(source?.meta?.sheetId)
+
+  // ── Sheet sync ────────────────────────────────────────────────────────────
+  const handleSyncComplete = useCallback((updated) => {
+    setSource(updated)
+  }, [])
+
+  const { sync, syncing, lastResult, error: syncError, updateSchedule } =
+    useSheetSync(source, userId, accessToken, handleSyncComplete)
+
+  // ── Date filter ───────────────────────────────────────────────────────────
+  const [dateFilter, setDateFilter] = useState({ type: 'all', value: null })
+
   const dateCol = useMemo(() => {
     if (!source?.headers) return null
     return source.headers.find(isDateColumn) ?? null
   }, [source])
 
-  // Available years derived from the date column (for the year selector)
   const availableYears = useMemo(() => {
     if (!dateCol || !allRows.length) return []
     const years = new Set()
@@ -281,74 +339,305 @@ export default function DashboardPage() {
       const d = parseDate(r.data?.[dateCol])
       if (d) years.add(d.getFullYear())
     }
-    return [...years].sort((a, b) => b - a) // descending
+    return [...years].sort((a, b) => b - a)
   }, [allRows, dateCol])
 
-  // Filtered rows
-  const rows = useMemo(
+  // ── Column filters ────────────────────────────────────────────────────────
+  const [colFilters,   setColFilters]   = useState([])
+  const [filterDraft,  setFilterDraft]  = useState({ column: '', operator: 'equals', value: '' })
+  const [addingFilter, setAddingFilter] = useState(false)
+
+  const addColFilter = () => {
+    if (!filterDraft.column) return
+    const op = FILTER_OPERATORS.find((o) => o.value === filterDraft.operator)
+    if (op?.needsValue && !filterDraft.value.trim()) return
+    setColFilters((prev) => [...prev, { ...filterDraft }])
+    setFilterDraft({ column: '', operator: 'equals', value: '' })
+    setAddingFilter(false)
+  }
+
+  const removeColFilter = (idx) => setColFilters((prev) => prev.filter((_, i) => i !== idx))
+
+  // ── Derived rows ──────────────────────────────────────────────────────────
+  const dateFilteredRows = useMemo(
     () => filterRowsByDate(allRows, dateCol, dateFilter),
     [allRows, dateCol, dateFilter]
   )
 
-  // Chart data
-  const numericCol = useMemo(() => {
-    if (!source?.headers) return null
-    const nonDateHeaders = source.headers.filter((h) => !isDateColumn(h))
-    return findFirstNumericCol(nonDateHeaders, rows)
-  }, [source, rows])
+  const rows = useMemo(
+    () => colFilters.length ? applyFilters(dateFilteredRows, colFilters) : dateFilteredRows,
+    [dateFilteredRows, colFilters]
+  )
 
-  const chartData = useMemo(() => {
-    if (!dateCol || !numericCol || !rows.length) return []
-    return buildChartData(rows, dateCol, numericCol)
-  }, [rows, dateCol, numericCol])
+  const prevRows = useMemo(
+    () => buildPreviousPeriodRows(allRows, dateCol, dateFilter, colFilters),
+    [allRows, dateCol, dateFilter, colFilters]
+  )
 
-  const loading = dataLoading || kpisLoading
+  // ── Widget split ──────────────────────────────────────────────────────────
+  const kpiWidgets   = kpis.filter((k) => !k.formula?.widget_type || k.formula.widget_type === 'kpi')
+  const chartWidgets = kpis.filter((k) =>  k.formula?.widget_type && k.formula.widget_type !== 'kpi')
+
+  // ── Layout ────────────────────────────────────────────────────────────────
+  const {
+    layout, layoutLoaded, onLayoutChange, resetLayout,
+    snapshots, saveSnapshot, loadSnapshot, deleteSnapshot,
+  } = useDashboardLayout(sourceId, userId, kpis)
+
+  // Chart-only layout slice (GridLayout only gets chart widgets)
+  const chartLayout = useMemo(
+    () => layout.filter((l) => chartWidgets.some((w) => w.id === l.i)),
+    [layout, chartWidgets]
+  )
+
+  // ── Save view UI ──────────────────────────────────────────────────────────
+  const [saveViewOpen,  setSaveViewOpen]  = useState(false)
+  const [saveViewName,  setSaveViewName]  = useState('')
+  const [savingView,    setSavingView]    = useState(false)
+  const [viewsOpen,     setViewsOpen]     = useState(false)
+  const viewsRef   = useRef(null)
+  const saveInputRef = useRef(null)
+
+  useEffect(() => {
+    if (saveViewOpen && saveInputRef.current) saveInputRef.current.focus()
+  }, [saveViewOpen])
+
+  useEffect(() => {
+    if (!viewsOpen) return
+    const handler = (e) => { if (viewsRef.current && !viewsRef.current.contains(e.target)) setViewsOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [viewsOpen])
+
+  const handleSaveView = async () => {
+    if (!saveViewName.trim()) return
+    setSavingView(true)
+    await saveSnapshot(saveViewName.trim())
+    setSavingView(false)
+    setSaveViewOpen(false)
+    setSaveViewName('')
+  }
+
+  // ── Share ─────────────────────────────────────────────────────────────────
+  const [shareToast, setShareToast] = useState(false)
+  const shareTimer = useRef(null)
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href).catch(() => {})
+    setShareToast(true)
+    clearTimeout(shareTimer.current)
+    shareTimer.current = setTimeout(() => setShareToast(false), 2500)
+  }
 
   // ── Export ────────────────────────────────────────────────────────────────
-
-  function handleExportCSV() {
+  const handleExportCSV = () => {
     if (!source) return
     exportCSV(source.headers, rows, `${source.name}.csv`)
   }
 
+  const loading = dataLoading || kpisLoading
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Print styles */}
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <style>{`
         @media print {
           .no-print { display: none !important; }
           body { background: white; }
         }
+        .react-grid-item.react-grid-placeholder { background: #6366f1 !important; opacity: 0.12 !important; border-radius: 12px; }
+        .react-resizable-handle { opacity: 0; transition: opacity 0.15s; }
+        .react-grid-item:hover .react-resizable-handle { opacity: 1; }
       `}</style>
 
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10 no-print">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+      {/* ── Header ── */}
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-20 no-print">
+        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+
+          {/* Left: breadcrumb */}
+          <div className="flex items-center gap-2 min-w-0 shrink-0">
             <button
               onClick={() => navigate('/')}
-              className="text-sm text-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1 shrink-0"
+              className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center gap-1"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               Home
             </button>
-            <span className="text-gray-300 shrink-0">/</span>
-            <span className="text-sm font-semibold text-gray-800 truncate">
+            <span className="text-gray-300 dark:text-gray-600">/</span>
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[160px]">
               {source?.name ?? 'Dashboard'}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Right: action buttons */}
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+
+            {/* Sheet sync controls */}
+            {isSheet && (
+              <>
+                {/* Sync status chip */}
+                <span className={`text-xs font-medium rounded-lg border py-1.5 px-2.5 flex items-center gap-1.5 ${
+                  syncing
+                    ? 'border-blue-200 text-blue-600 dark:border-blue-700 dark:text-blue-400'
+                    : source?.meta?.sync_status === 'error'
+                    ? 'border-red-200 text-red-600 dark:border-red-700 dark:text-red-400'
+                    : 'border-gray-200 text-gray-500 dark:border-gray-600 dark:text-gray-400'
+                }`}>
+                  {syncing ? (
+                    <>
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                      Syncing…
+                    </>
+                  ) : source?.meta?.sync_status === 'error' ? (
+                    <>
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Sync error
+                    </>
+                  ) : source?.meta?.last_synced_at ? (
+                    <>
+                      <svg className="w-3 h-3 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      {timeAgo(source.meta.last_synced_at)}
+                    </>
+                  ) : (
+                    'Never synced'
+                  )}
+                </span>
+
+                {/* Schedule select */}
+                <select
+                  value={source?.meta?.sync_schedule ?? 'manual'}
+                  onChange={(e) => updateSchedule(e.target.value)}
+                  title={`Rate limit: ${MIN_SYNC_INTERVAL_S / 60}min between syncs`}
+                  className="text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-gray-200 py-1.5 pl-3 pr-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                >
+                  {SYNC_SCHEDULES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+
+                {/* Manual refresh */}
+                <button
+                  onClick={sync}
+                  disabled={syncing}
+                  className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
+                >
+                  <svg className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </button>
+
+                <span className="w-px h-5 bg-gray-200 dark:bg-gray-600" />
+              </>
+            )}
+
+            {/* Edit Widgets */}
             <button
               onClick={() => navigate(`/source/${sourceId}/kpis`)}
               className="btn-secondary text-xs py-1.5 px-3 hidden sm:inline-flex"
             >
-              Edit KPIs
+              Edit Widgets
             </button>
+
+            {/* Save view */}
+            {saveViewOpen ? (
+              <div className="flex items-center gap-1">
+                <input
+                  ref={saveInputRef}
+                  value={saveViewName}
+                  onChange={(e) => setSaveViewName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveView(); if (e.key === 'Escape') { setSaveViewOpen(false); setSaveViewName('') } }}
+                  placeholder="View name…"
+                  className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 w-32 bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <button
+                  onClick={handleSaveView}
+                  disabled={savingView || !saveViewName.trim()}
+                  className="btn-primary text-xs py-1.5 px-2.5"
+                >
+                  {savingView ? '…' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setSaveViewOpen(false); setSaveViewName('') }}
+                  className="btn-secondary text-xs py-1.5 px-2"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setSaveViewOpen(true)} className="btn-secondary text-xs py-1.5 px-3">
+                Save view
+              </button>
+            )}
+
+            {/* Views dropdown */}
+            {snapshots.length > 0 && (
+              <div className="relative" ref={viewsRef}>
+                <button
+                  onClick={() => setViewsOpen((v) => !v)}
+                  className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
+                >
+                  Views
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {viewsOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-lg z-30 py-1">
+                    {snapshots.map((snap) => (
+                      <div key={snap.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 group">
+                        <button
+                          onClick={() => { loadSnapshot(snap.id); setViewsOpen(false) }}
+                          className="flex-1 text-left text-xs text-gray-700 dark:text-gray-200 truncate"
+                        >
+                          {snap.name}
+                          <span className="text-gray-400 ml-1">{timeAgo(snap.savedAt)}</span>
+                        </button>
+                        <button
+                          onClick={() => deleteSnapshot(snap.id)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Reset layout */}
+            <button onClick={resetLayout} className="btn-secondary text-xs py-1.5 px-3">
+              Reset
+            </button>
+
+            <span className="w-px h-5 bg-gray-200 dark:bg-gray-600" />
+
+            {/* Share */}
+            <div className="relative">
+              <button onClick={handleShare} className="btn-secondary text-xs py-1.5 px-3">
+                Share
+              </button>
+              {shareToast && (
+                <div className="absolute right-0 top-full mt-1 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs rounded-lg px-3 py-1.5 whitespace-nowrap shadow z-30">
+                  Link copied!
+                </div>
+              )}
+            </div>
+
+            {/* Export CSV */}
             <button
               onClick={handleExportCSV}
               disabled={!source || loading}
@@ -356,37 +645,45 @@ export default function DashboardPage() {
             >
               Export CSV
             </button>
-            <button
-              onClick={printDashboard}
-              className="btn-secondary text-xs py-1.5 px-3"
-            >
+
+            {/* Print / PDF */}
+            <button onClick={printDashboard} className="btn-secondary text-xs py-1.5 px-3">
               Print / PDF
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <main className="max-w-screen-xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+
+        {/* Load error */}
         {loadError && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
             {loadError}
           </div>
         )}
 
-        {/* Date filter pills */}
-        {dateCol && !loading && (
-          <div className="flex items-center gap-2 no-print flex-wrap">
-            <span className="text-xs text-gray-400 shrink-0">Filter:</span>
+        {/* Sync error detail */}
+        {syncError && (
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-700 dark:text-amber-400 no-print">
+            Sync failed: {syncError}
+          </div>
+        )}
 
-            {/* Rolling + YTD pills */}
-            {ROLLING_FILTERS.map((f) => (
+        {/* ── Filter bar ── */}
+        {!loading && (dateCol || source?.headers?.length) && (
+          <div className="flex items-start gap-2 flex-wrap no-print">
+            <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 mt-1">Filter:</span>
+
+            {/* Date pills */}
+            {dateCol && ROLLING_FILTERS.map((f) => (
               <button
                 key={f.label}
                 onClick={() => setDateFilter(f)}
                 className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                   filterMatch(dateFilter, f)
                     ? 'bg-brand-600 text-white'
-                    : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'
+                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300'
                 }`}
               >
                 {f.label}
@@ -394,7 +691,7 @@ export default function DashboardPage() {
             ))}
 
             {/* Year selector */}
-            {availableYears.length > 0 && (
+            {dateCol && availableYears.length > 0 && (
               <div className="relative">
                 <select
                   value={dateFilter.type === 'year' ? dateFilter.value : ''}
@@ -405,7 +702,7 @@ export default function DashboardPage() {
                   className={`pl-3 pr-7 py-1 rounded-full text-xs font-medium border transition-colors appearance-none cursor-pointer ${
                     dateFilter.type === 'year'
                       ? 'bg-brand-600 text-white border-brand-600'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'
                   }`}
                 >
                   <option value="">Year…</option>
@@ -422,50 +719,117 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <span className="text-xs text-gray-400 ml-1">
+            {/* Column filter chips */}
+            {colFilters.map((f, idx) => {
+              const opLabel = FILTER_OPERATORS.find((o) => o.value === f.operator)?.label ?? f.operator
+              return (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300"
+                >
+                  <span className="font-semibold">{f.column}</span>
+                  <span className="text-indigo-400">{opLabel}</span>
+                  {f.value && <span>{f.value}</span>}
+                  <button onClick={() => removeColFilter(idx)} className="ml-0.5 hover:text-red-500">×</button>
+                </span>
+              )
+            })}
+
+            {/* Add column filter */}
+            {addingFilter ? (
+              <div className="flex items-center gap-1 flex-wrap">
+                <select
+                  value={filterDraft.column}
+                  onChange={(e) => setFilterDraft((d) => ({ ...d, column: e.target.value }))}
+                  className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-200"
+                >
+                  <option value="">Column…</option>
+                  {source?.headers?.map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
+                <select
+                  value={filterDraft.operator}
+                  onChange={(e) => setFilterDraft((d) => ({ ...d, operator: e.target.value }))}
+                  className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-200"
+                >
+                  {FILTER_OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                {FILTER_OPERATORS.find((o) => o.value === filterDraft.operator)?.needsValue && (
+                  <input
+                    value={filterDraft.value}
+                    onChange={(e) => setFilterDraft((d) => ({ ...d, value: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && addColFilter()}
+                    placeholder="value…"
+                    className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 w-24 bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none"
+                  />
+                )}
+                <button onClick={addColFilter} className="btn-primary text-xs py-1 px-2.5">Add</button>
+                <button onClick={() => setAddingFilter(false)} className="btn-secondary text-xs py-1 px-2">✕</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingFilter(true)}
+                className="px-3 py-1 rounded-full text-xs font-medium border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 transition-colors"
+              >
+                + filter
+              </button>
+            )}
+
+            {/* Clear all + row count */}
+            {(colFilters.length > 0 || dateFilter.type !== 'all') && (
+              <button
+                onClick={() => { setColFilters([]); setDateFilter({ type: 'all', value: null }) }}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">
               {rows.length.toLocaleString()} rows
-              {dateFilter.type === 'ytd' && ` · Jan 1–today`}
-              {dateFilter.type === 'year' && ` · full year ${dateFilter.value}`}
             </span>
           </div>
         )}
 
+        {/* ── Content ── */}
         {loading ? (
           <Skeleton />
         ) : kpis.length === 0 ? (
-          // Empty state
           <div className="text-center py-24">
-            <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-5">
+            <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center mx-auto mb-5">
               <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10" />
               </svg>
             </div>
-            <p className="text-gray-600 font-medium">No KPIs defined yet</p>
+            <p className="text-gray-600 dark:text-gray-300 font-medium">No widgets defined yet</p>
             <p className="text-gray-400 text-sm mt-1">Define metrics to start seeing your dashboard.</p>
-            <button
-              onClick={() => navigate(`/source/${sourceId}/kpis`)}
-              className="btn-primary mt-5"
-            >
+            <button onClick={() => navigate(`/source/${sourceId}/kpis`)} className="btn-primary mt-5">
               Define your KPIs →
             </button>
           </div>
         ) : (
           <>
             {/* KPI Cards */}
-            {kpis.filter((k) => !k.formula?.widget_type || k.formula.widget_type === 'kpi').length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                {kpis
-                  .filter((k) => !k.formula?.widget_type || k.formula.widget_type === 'kpi')
-                  .map((kpi) => <KPICard key={kpi.id} kpi={kpi} rows={rows} />)
-                }
+            {kpiWidgets.length > 0 && (
+              <div
+                className="grid gap-4"
+                style={{ gridTemplateColumns: `repeat(${Math.min(kpiWidgets.length, 6)}, minmax(0, 1fr))` }}
+              >
+                {kpiWidgets.map((kpi) => (
+                  <KPICard key={kpi.id} kpi={kpi} rows={rows} prevRows={prevRows} />
+                ))}
               </div>
             )}
 
-            {/* Chart widgets */}
-            {kpis
-              .filter((k) => k.formula?.widget_type && k.formula.widget_type !== 'kpi')
-              .map((widget) => <ChartWidget key={widget.id} widget={widget} rows={rows} />)
-            }
+            {/* Chart Grid */}
+            {chartWidgets.length > 0 && (
+              <ChartGrid
+                widgets={chartWidgets}
+                rows={rows}
+                layout={chartLayout}
+                onLayoutChange={onLayoutChange}
+                layoutLoaded={layoutLoaded}
+              />
+            )}
           </>
         )}
       </main>
