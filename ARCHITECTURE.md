@@ -301,3 +301,116 @@ Ensure dynamic routes properly resolve:
 - Routing must work correctly in production builds
 - Avoid unnecessary full-page reloads
 - Maintain smooth SPA-like navigation experience
+
+---
+
+## Query & Calculated Metrics Architecture
+
+### Overview
+
+Every visualization is derived from a structured query:
+
+```
+Dataset → Filters → Grouping → Metrics → Output
+```
+
+No widget performs direct data manipulation outside this pipeline.
+
+### Core Design Principle
+
+The system replaces spreadsheet-like logic (e.g. `COUNTIF`, `SUMIF`) with a structured, composable query engine. Instead of formulas, all logic is represented as:
+
+- filters
+- aggregations
+- groupings
+- calculated metrics
+
+### WidgetQuery Model
+
+All widgets are defined using a single query object:
+
+```ts
+WidgetQuery = {
+  datasetId: string,
+  datasetVersionId?: string,
+  filters: FilterCondition[],
+  groupBy?: string[],
+  metric: MetricDefinition,
+  calculatedMetrics?: CalculatedMetric[]
+}
+```
+
+### Query Execution Pipeline
+
+All widgets follow a deterministic execution flow:
+
+1. Load dataset (latest or pinned version)
+2. Apply dashboard-level filters
+3. Apply widget-level filters
+4. Apply grouping logic
+5. Apply metric aggregation
+6. Apply calculated metrics (if any)
+7. Return visualization-ready output
+
+### Filter Model
+
+```ts
+FilterCondition = {
+  column: string,
+  operator: "eq" | "neq" | "gt" | "lt" | "contains" | "startsWith" | "endsWith",
+  value: any
+}
+```
+
+### Aggregation Model
+
+```ts
+MetricDefinition = {
+  type: "count" | "sum" | "avg" | "min" | "max",
+  column?: string
+}
+```
+
+**Execution rules:**
+- Aggregations are executed server-side only
+- Aggregations must operate on filtered datasets
+- Aggregations must support grouped data
+
+### Calculated Metrics
+
+Calculated metrics replicate spreadsheet-style logic (`COUNTIF`, `SUMIF`, `AVGIF`) as structured query transformations.
+
+```ts
+CalculatedMetric = {
+  name: string,
+  aggregation: "count" | "sum" | "avg",
+  column?: string,
+  conditions: FilterCondition[]
+}
+```
+
+Calculated metrics are executed **after** base aggregation:
+
+1. Apply base filters
+2. Apply grouping
+3. Compute base metric
+4. Apply calculated metric conditions
+5. Return final result
+
+**Example — "Active users per day":**
+
+```ts
+{
+  metric: { type: "count", column: "user_id" },
+  filters: [{ column: "status", operator: "eq", value: "active" }],
+  groupBy: ["date"]
+}
+```
+
+### Key Constraint Rules
+
+- No raw formulas executed in UI
+- No direct data manipulation in widgets
+- All transformations must pass through Query Engine
+- Dataset versions must remain immutable
+- Query execution must be deterministic and server-side
