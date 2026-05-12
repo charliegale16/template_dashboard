@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { extractSheetId, fetchSheetTabs, fetchSheetData } from '../../adapters/SheetsAdapter'
+import { getCached, setCached, getCachedTabs, setCachedTabs } from '../../utils/sheetCache'
 
 export default function Step2Connect({ config, onChange, accessToken }) {
   const [url, setUrl] = useState(
@@ -25,9 +26,15 @@ export default function Step2Connect({ config, onChange, accessToken }) {
   }, [url, accessToken])
 
   const loadPreview = useCallback(async (sheetId, tabName) => {
+    const cached = getCached(sheetId, tabName)
+    if (cached) {
+      setPreviews((p) => ({ ...p, [tabName]: cached.data }))
+      return
+    }
     setPreviews((p) => ({ ...p, [tabName]: 'loading' }))
     try {
       const data = await fetchSheetData(sheetId, tabName, accessToken)
+      setCached(sheetId, tabName, data)
       setPreviews((p) => ({ ...p, [tabName]: data }))
     } catch (err) {
       setPreviews((p) => ({ ...p, [tabName]: 'error:' + err.message }))
@@ -35,10 +42,21 @@ export default function Step2Connect({ config, onChange, accessToken }) {
   }, [accessToken])
 
   const loadTabs = useCallback(async (sheetId, token) => {
+    const cachedNames = getCachedTabs(sheetId)
+    if (cachedNames) {
+      setAvailableTabs(cachedNames)
+      const validSelected = (config.sheetTabs || []).filter((t) => cachedNames.includes(t))
+      const initial = validSelected.length ? validSelected : [cachedNames[0]]
+      onChange({ sheetId, sheetTabs: initial, sheetName: initial[0] })
+      setActivePreview(initial[0])
+      loadPreview(sheetId, initial[0])
+      return
+    }
     setTabsLoading(true)
     setTabsError(null)
     try {
       const names = await fetchSheetTabs(sheetId, token)
+      setCachedTabs(sheetId, names)
       setAvailableTabs(names)
       const validSelected = (config.sheetTabs || []).filter((t) => names.includes(t))
       const initial = validSelected.length ? validSelected : [names[0]]
@@ -144,12 +162,20 @@ export default function Step2Connect({ config, onChange, accessToken }) {
 
 function TabCard({ tabName, isSelected, isPrimary, isPreviewing, onToggle, onPreview }) {
   return (
-    <div className={['relative rounded-xl border-2 p-3 transition-all cursor-pointer select-none', isSelected ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-white hover:border-gray-300'].join(' ')}>
+    <div className={[
+      'relative rounded-xl border-2 p-3 transition-all cursor-pointer select-none',
+      isSelected ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-white hover:border-gray-300',
+    ].join(' ')}>
       {isPrimary && (
-        <span className="absolute -top-2 left-3 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-600 text-white leading-none">PRIMARY</span>
+        <span className="absolute -top-2 left-3 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-600 text-white leading-none">
+          PRIMARY
+        </span>
       )}
       <div className="flex items-start gap-2" onClick={onToggle}>
-        <span className={['mt-0.5 w-4 h-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors', isSelected ? 'bg-brand-500 border-brand-500' : 'border-gray-300 bg-white'].join(' ')}>
+        <span className={[
+          'mt-0.5 w-4 h-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors',
+          isSelected ? 'bg-brand-500 border-brand-500' : 'border-gray-300 bg-white',
+        ].join(' ')}>
           {isSelected && (
             <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10">
               <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -160,7 +186,10 @@ function TabCard({ tabName, isSelected, isPrimary, isPreviewing, onToggle, onPre
       </div>
       <button
         onClick={(e) => { e.stopPropagation(); onPreview() }}
-        className={['mt-2 ml-6 text-xs transition-colors', isPreviewing ? 'text-brand-600 font-medium' : 'text-gray-400 hover:text-brand-500'].join(' ')}
+        className={[
+          'mt-2 ml-6 text-xs transition-colors',
+          isPreviewing ? 'text-brand-600 font-medium' : 'text-gray-400 hover:text-brand-500',
+        ].join(' ')}
       >
         {isPreviewing ? '▶ Previewing' : 'Preview →'}
       </button>
@@ -173,7 +202,9 @@ function PreviewPanel({ tabName, data, totalTabs }) {
   if (data === 'loading') {
     return (
       <div className="space-y-2">
-        <p className="text-sm font-medium text-gray-700">Preview: <span className="text-brand-600">{tabName}</span></p>
+        <p className="text-sm font-medium text-gray-700">
+          Preview: <span className="text-brand-600">{tabName}</span>
+        </p>
         <div className="h-28 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center gap-2 text-sm text-gray-400">
           <Spinner /> Loading preview…
         </div>
@@ -187,38 +218,45 @@ function PreviewPanel({ tabName, data, totalTabs }) {
       </div>
     )
   }
-  const visibleHeaders = data.headers.slice(0, 8)
-  const visibleRows = data.rows.slice(0, 5)
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <p className="text-sm font-medium text-gray-700">Preview: <span className="text-brand-600">{tabName}</span></p>
+        <p className="text-sm font-medium text-gray-700">
+          Preview: <span className="text-brand-600">{tabName}</span>
+        </p>
         <span className="text-xs text-gray-400">
-          {data.headers.length} columns · {data.rows.length} rows{totalTabs > 1 && ' · click another tab above to switch preview'}
+          {data.headers.length} columns · {data.rows.length} rows
+          {totalTabs > 1 && ' · click another tab above to switch'}
         </span>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-auto rounded-lg border border-gray-200 max-h-72">
         <table className="min-w-full text-xs">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
-              {visibleHeaders.map((h, i) => (
-                <th key={i} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">{h}</th>
+              {data.headers.map((h, i) => (
+                <th key={i} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap border-b border-gray-200">
+                  {h}
+                </th>
               ))}
-              {data.headers.length > 8 && (
-                <th className="px-3 py-2 text-left text-gray-400 whitespace-nowrap">+{data.headers.length - 8} more</th>
-              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {visibleRows.map((row, ri) => (
-              <tr key={ri} className="hover:bg-gray-50">
-                {visibleHeaders.map((_, ci) => (
-                  <td key={ci} className="px-3 py-2 text-gray-700 whitespace-nowrap max-w-[140px] truncate">{String(row[ci] ?? '')}</td>
-                ))}
+            {data.rows.length === 0 ? (
+              <tr>
+                <td colSpan={data.headers.length} className="px-3 py-4 text-center text-gray-400">
+                  No data rows found.
+                </td>
               </tr>
-            ))}
-            {visibleRows.length === 0 && (
-              <tr><td colSpan={visibleHeaders.length} className="px-3 py-4 text-center text-gray-400">No data rows found.</td></tr>
+            ) : (
+              data.rows.map((row, ri) => (
+                <tr key={ri} className="hover:bg-gray-50">
+                  {data.headers.map((_, ci) => (
+                    <td key={ci} className="px-3 py-2 text-gray-700 whitespace-nowrap max-w-[180px] truncate">
+                      {String(row[ci] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))
             )}
           </tbody>
         </table>
@@ -245,3 +283,4 @@ function Spinner() {
     </svg>
   )
 }
+// eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof eof

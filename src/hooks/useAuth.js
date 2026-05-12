@@ -1,70 +1,53 @@
-import { useState, useCallback } from 'react'
-import { useGoogleLogin } from '@react-oauth/google'
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
-const TOKEN_KEY = 'dashboard_access_token'
-
-/**
- * Manages Google OAuth 2.0 state for the dashboard.
- *
- * The implicit flow is used so the access token is available immediately
- * in the browser — no server-side token exchange needed.
- *
- * Token expiry: Google implicit-flow tokens last ~1 hour. When a 401 is
- * returned by any Sheets API call, callers should invoke logout() which
- * clears the token and redirects the user back to /setup to reconnect.
- *
- * Phase 2 — Excel / OneDrive: replace the Google login call with a
- * Microsoft Identity Platform MSAL flow and store its access token under
- * a different localStorage key (e.g. 'dashboard_ms_access_token').
- */
 export function useAuth() {
-  const [accessToken, setAccessToken] = useState(() => {
-    return localStorage.getItem(TOKEN_KEY) || null
-  })
+  const [session, setSession] = useState(undefined) // undefined = loading
 
-  const [profile, setProfile] = useState(() => {
-    try {
-      const stored = localStorage.getItem(TOKEN_KEY + '_profile')
-      return stored ? JSON.parse(stored) : null
-    } catch {
-      return null
-    }
-  })
-
-  const googleLogin = useGoogleLogin({
-    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
-    onSuccess: async (tokenResponse) => {
-      const token = tokenResponse.access_token
-      setAccessToken(token)
-      localStorage.setItem(TOKEN_KEY, token)
-
-      // Fetch basic profile so Step 1 can show "Connected as ..."
-      try {
-        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (res.ok) {
-          const info = await res.json()
-          setProfile(info)
-          localStorage.setItem(TOKEN_KEY + '_profile', JSON.stringify(info))
-        }
-      } catch {
-        // Profile fetch is best-effort; auth still succeeds
-      }
-    },
-    onError: (err) => {
-      console.error('Google login error', err)
-    },
-  })
-
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(TOKEN_KEY + '_profile')
-    setAccessToken(null)
-    setProfile(null)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session ?? null))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s ?? null))
+    return () => subscription.unsubscribe()
   }, [])
 
-  const isAuthenticated = Boolean(accessToken)
+  /** Google OAuth — redirects away; provider_token becomes the Sheets API token.
+   *  Pass a custom redirectTo to return to a specific page after OAuth. */
+  const loginWithGoogle = (redirectTo = window.location.origin) =>
+    supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        scopes: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+        redirectTo,
+      },
+    })
 
-  return { accessToken, profile, isAuthenticated, login: googleLogin, logout }
+  /** Email + password sign-in. Returns { error } */
+  const loginWithEmail = (email, password) =>
+    supabase.auth.signInWithPassword({ email, password })
+
+  /** Email + password sign-up. Returns { error } */
+  const signUpWithEmail = (email, password) =>
+    supabase.auth.signUp({ email, password })
+
+  /** Magic link — sends an email, no password needed. Returns { error } */
+  const loginWithMagicLink = (email) =>
+    supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })
+
+  const logout = () => supabase.auth.signOut()
+
+  return {
+    session,
+    user: session?.user ?? null,
+    /** Google OAuth sessions carry provider_token (Sheets API); email sessions have null */
+    accessToken: session?.provider_token ?? null,
+    isAuthenticated: Boolean(session),
+    loading: session === undefined,
+    // convenience alias kept for backwards compat
+    login: loginWithGoogle,
+    loginWithGoogle,
+    loginWithEmail,
+    signUpWithEmail,
+    loginWithMagicLink,
+    logout,
+  }
 }
