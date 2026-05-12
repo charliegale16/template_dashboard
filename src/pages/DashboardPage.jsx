@@ -15,7 +15,7 @@ import {
   applyFilters, FILTER_OPERATORS,
   STROKE_COLOR, STROKE_COLOR_2,
 } from '../utils/formulaEngine'
-import { exportCSV, printDashboard } from '../utils/exportUtils'
+import { exportCSV } from '../utils/exportUtils'
 import { useDashboardLayout } from '../hooks/useDashboardLayout'
 import { useSheetSync } from '../hooks/useSheetSync'
 import { SYNC_SCHEDULES, MIN_SYNC_INTERVAL_S } from '../features/integrations/sheetSyncService'
@@ -646,9 +646,15 @@ export default function DashboardPage() {
               Export CSV
             </button>
 
-            {/* Print / PDF */}
-            <button onClick={printDashboard} className="btn-secondary text-xs py-1.5 px-3">
-              Print / PDF
+            {/* Report builder */}
+            <button
+              onClick={() => navigate(`/source/${sourceId}/report`)}
+              className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Report
             </button>
           </div>
         </div>

@@ -267,3 +267,37 @@ Dataset
 
 - Be versioned
 - Be immutable per version
+
+### Route Persistence
+- Prevent blank pages or crashes when refreshing on nested routes
+- Ensure dashboard/report/widget routes load correctly on refresh
+
+### Client + Server Navigation
+- Ensure navigation works consistently between:
+  - dashboards
+  - reports
+  - datasets
+  - widget builder pages
+
+### Authentication Protection
+- Preserve authenticated session state during refresh
+- Prevent unexpected redirects after page reload
+
+### Dynamic Routes
+Ensure dynamic routes properly resolve:
+- dashboard IDs
+- report IDs
+- dataset IDs
+- widget IDs
+
+### Error Handling
+- Add graceful fallback handling for invalid routes
+- Add loading states during route hydration
+- Prevent infinite redirect loops
+
+---
+
+## Constraints
+- Routing must work correctly in production builds
+- Avoid unnecessary full-page reloads
+- Maintain smooth SPA-like navigation experience
