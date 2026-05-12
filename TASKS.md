@@ -36,6 +36,12 @@
 
 ## Quick Fixes
 - [x] Reinforce routes — SPA redirect config (Netlify + Vercel), NotFoundPage, auth return path preservation
+- [ ] On the Dashboard page, all widgets should be dragable, KPI tiles are sized perfect, All graphs should have a full size default width and be resizeable.
+- [ ] For the CSS Grid I should be able to have two graphs next to each other. Improve resizing for all widgets while keeping their default size the same. 
+- [ ] When hovering on the bar graph change the hover color to something less harsh, currently its a bright white.
+- [ ] Modify the tiles under data source, the re-upload should be changed to options and inside you should be able to edit the name.
+- [ ] Under data source, please ensure the tiles are consitant with formating. Some tiles have spaces in between while others dont.
+- [ ] Integrate a preferences section inside of the profile level where the user can change between light, dark, or system default theme.
 
 ## Reporting System
 - [x] Replace the PDF/Print with Report button (links to report builder)
