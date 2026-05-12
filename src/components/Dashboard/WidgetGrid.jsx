@@ -4,7 +4,8 @@ import WidgetConfigDrawer from './WidgetConfigDrawer'
 
 export default function WidgetGrid({
   widgets,
-  filteredTabDataMap,
+  tabData,
+  activeTab,
   config,
   editMode,
   onUpdate,
@@ -12,20 +13,13 @@ export default function WidgetGrid({
   onMove,
   onAdd,
 }) {
-  // { widgetId, tab } — which widget's config drawer is open
-  const [configuring, setConfiguring] = useState(null)
+  const [configuringId, setConfiguringId] = useState(null)
 
   if (!widgets?.length) {
     return <EmptyGrid editMode={editMode} onAdd={onAdd} message="No widgets configured." />
   }
 
-  const tabs = (config.sheetTabs || (config.sheetName ? [config.sheetName] : []))
-    .filter((tab) => {
-      const m = config.tabMappings?.[tab]
-      return m && Object.values(m).some(Boolean)
-    })
-
-  if (!tabs.length) {
+  if (!activeTab) {
     return (
       <EmptyGrid
         editMode={editMode}
@@ -35,96 +29,74 @@ export default function WidgetGrid({
     )
   }
 
-  const multiTab = tabs.length > 1
+  const data = tabData ?? { headers: [], rows: [] }
+  const tabMappings = config.tabMappings?.[activeTab] ?? {}
 
-  // Resolve the tab context for the open config drawer
-  const configuringWidget = configuring
-    ? widgets.find((w) => w.id === configuring.widgetId)
-    : null
-  const configuringTab = configuring?.tab ?? tabs[0]
-  const configuringHeaders = filteredTabDataMap[configuringTab]?.headers ?? []
-  const configuringTabMappings = config.tabMappings?.[configuringTab] ?? {}
+  // Resolve configuring state
+  const configuringWidget = configuringId ? widgets.find((w) => w.id === configuringId) : null
+  const configuringHeaders = data.headers
+  const configuringTabMappings = tabMappings
 
   return (
     <>
-      <div className="space-y-10">
-        {tabs.map((tab) => {
-          const data = filteredTabDataMap[tab] || { headers: [], rows: [] }
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 auto-rows-min">
+        {widgets.map((widget, idx) => {
+          const entry = WIDGET_REGISTRY[widget.type]
+          if (!entry) return null
+
+          const effectiveMappings = { ...tabMappings, ...(widget.config || {}) }
+          const effectiveConfig = { ...config, mappings: effectiveMappings }
+
+          const { component: Widget, props: extraProps = {} } = entry
+          const span = SIZE_SPANS[widget.size] ?? SIZE_SPANS.md
 
           return (
-            <div key={tab}>
-              {multiTab && (
-                <div className="flex items-center gap-3 mb-4">
-                  <h2 className="text-sm font-semibold text-gray-700">{tab}</h2>
-                  <div className="flex-1 h-px bg-gray-100" />
-                  <span className="text-xs text-gray-400">{data.rows.length} rows</span>
-                </div>
+            <div key={widget.id} className={span}>
+              {editMode ? (
+                <EditableWidget
+                  widget={widget}
+                  isFirst={idx === 0}
+                  isLast={idx === widgets.length - 1}
+                  hasOverrides={Boolean(widget.config && Object.keys(widget.config).length)}
+                  hasConfigurableRoles={entry.isCustom || (entry.configurableRoles ?? []).length > 0}
+                  onUpdate={(updates) => onUpdate(widget.id, updates)}
+                  onRemove={() => onRemove(widget.id)}
+                  onMoveLeft={() => onMove(widget.id, -1)}
+                  onMoveRight={() => onMove(widget.id, 1)}
+                  onConfigure={() => setConfiguringId(widget.id)}
+                >
+                  <Widget data={data} config={effectiveConfig} {...extraProps} />
+                </EditableWidget>
+              ) : (
+                <Widget data={data} config={effectiveConfig} {...extraProps} />
               )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 auto-rows-min">
-                {widgets.map((widget, idx) => {
-                  const entry = WIDGET_REGISTRY[widget.type]
-                  if (!entry) return null
-
-                  // Per-widget overrides merged on top of the tab's shared mappings
-                  const tabMappings = config.tabMappings[tab] || {}
-                  const effectiveMappings = { ...tabMappings, ...(widget.config || {}) }
-                  const effectiveConfig = { ...config, mappings: effectiveMappings }
-
-                  const { component: Widget, props: extraProps = {} } = entry
-                  const span = SIZE_SPANS[widget.size] ?? SIZE_SPANS.md
-
-                  return (
-                    <div key={widget.id} className={span}>
-                      {editMode ? (
-                        <EditableWidget
-                          widget={widget}
-                          isFirst={idx === 0}
-                          isLast={idx === widgets.length - 1}
-                          hasOverrides={Boolean(widget.config && Object.keys(widget.config).length)}
-                          hasConfigurableRoles={entry.isCustom || (entry.configurableRoles ?? []).length > 0}
-                          onUpdate={(updates) => onUpdate(widget.id, updates)}
-                          onRemove={() => onRemove(widget.id)}
-                          onMoveLeft={() => onMove(widget.id, -1)}
-                          onMoveRight={() => onMove(widget.id, 1)}
-                          onConfigure={() => setConfiguring({ widgetId: widget.id, tab })}
-                        >
-                          <Widget data={data} config={effectiveConfig} {...extraProps} />
-                        </EditableWidget>
-                      ) : (
-                        <Widget data={data} config={effectiveConfig} {...extraProps} />
-                      )}
-                    </div>
-                  )
-                })}
-
-                {editMode && (
-                  <div className="col-span-1">
-                    <button
-                      onClick={onAdd}
-                      className="w-full h-full min-h-[120px] rounded-xl border-2 border-dashed border-gray-200 hover:border-brand-400 hover:bg-brand-50 transition-colors flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-brand-600"
-                    >
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
-                      </svg>
-                      <span className="text-xs font-medium">Add widget</span>
-                    </button>
-                  </div>
-                )}
-              </div>
             </div>
           )
         })}
+
+        {editMode && (
+          <div className="col-span-1">
+            <button
+              onClick={onAdd}
+              className="w-full h-full min-h-[120px] rounded-xl border-2 border-dashed border-gray-200 hover:border-brand-400 hover:bg-brand-50 transition-colors flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-brand-600"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="text-xs font-medium">Add widget</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <WidgetConfigDrawer
-        open={Boolean(configuring)}
+        open={Boolean(configuringId)}
         widget={configuringWidget}
         tabHeaders={configuringHeaders}
         tabMappings={configuringTabMappings}
-        multiTab={multiTab}
+        multiTab={false}
         onUpdate={onUpdate}
-        onClose={() => setConfiguring(null)}
+        onClose={() => setConfiguringId(null)}
       />
     </>
   )
@@ -167,7 +139,6 @@ function EditableWidget({
 
       {/* Controls */}
       <div className="absolute top-2 right-2 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {/* Configure data */}
         {hasConfigurableRoles && (
           <button
             title="Configure data"
@@ -180,7 +151,6 @@ function EditableWidget({
           </button>
         )}
 
-        {/* Size buttons */}
         <div className="flex items-center bg-white/95 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm overflow-hidden">
           {SIZES.map((s) => (
             <button
@@ -199,7 +169,6 @@ function EditableWidget({
           ))}
         </div>
 
-        {/* Move */}
         <div className="flex items-center bg-white/95 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm overflow-hidden">
           <button
             title="Move left"
@@ -223,7 +192,6 @@ function EditableWidget({
           </button>
         </div>
 
-        {/* Remove */}
         <button
           title="Remove widget"
           onClick={onRemove}

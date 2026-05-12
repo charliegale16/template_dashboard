@@ -1,100 +1,72 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { GoogleOAuthProvider } from '@react-oauth/google'
-import { useConfig } from './hooks/useConfig'
 import { useAuth } from './hooks/useAuth'
-import SetupPage from './pages/SetupPage'
+import LoginPage from './pages/LoginPage'
+import HomePage from './pages/HomePage'
+import UploadPage from './pages/UploadPage'
+import KPIBuilderPage from './pages/KPIBuilderPage'
 import DashboardPage from './pages/DashboardPage'
+import ProfilePage from './pages/ProfilePage'
+import ReportPage from './pages/ReportPage'
+import ReuploadPage from './pages/ReuploadPage'
 
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props)
-    this.state = { error: null }
-  }
-
-  static getDerivedStateFromError(error) {
-    return { error }
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-red-100 p-8 text-center">
-            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-            </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Something went wrong</h2>
-            <p className="text-sm text-gray-500 mb-6">{this.state.error.message}</p>
-            <button
-              className="btn-primary"
-              onClick={() => {
-                this.setState({ error: null })
-                window.location.href = '/'
-              }}
-            >
-              Reload dashboard
-            </button>
-          </div>
-        </div>
-      )
-    }
-    return this.props.children
-  }
+function RequireAuth({ children }) {
+  const { isAuthenticated, loading } = useAuth()
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="w-6 h-6 rounded-full border-2 border-brand-600 border-t-transparent animate-spin" />
+    </div>
+  )
+  return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
-function LandingRedirect({ hasConfig, isAuthenticated }) {
+/** After Google OAuth the browser lands on '/'. Check if we stored a return path. */
+function OAuthReturnHandler({ children }) {
   const navigate = useNavigate()
-  React.useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/setup', { replace: true })
-    } else {
-      navigate(hasConfig ? '/dashboard' : '/setup', { replace: true })
+  const { isAuthenticated, loading } = useAuth()
+
+  useEffect(() => {
+    if (loading || !isAuthenticated) return
+    const returnPath = sessionStorage.getItem('oauth_return')
+    if (returnPath) {
+      sessionStorage.removeItem('oauth_return')
+      navigate(returnPath, { replace: true })
     }
-  }, [hasConfig, isAuthenticated, navigate])
-  return null
+  }, [isAuthenticated, loading, navigate])
+
+  return children
 }
 
 function AppRoutes() {
-  const { config, saveConfig, clearConfig, hasConfig } = useConfig()
-  const auth = useAuth()
+  const { isAuthenticated, loading } = useAuth()
+
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="w-6 h-6 rounded-full border-2 border-brand-600 border-t-transparent animate-spin" />
+    </div>
+  )
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={<LandingRedirect hasConfig={hasConfig} isAuthenticated={auth.isAuthenticated} />}
-      />
-      <Route
-        path="/setup"
-        element={<SetupPage config={config} saveConfig={saveConfig} auth={auth} />}
-      />
-      <Route
-        path="/dashboard"
-        element={
-          <DashboardPage
-            config={config}
-            saveConfig={saveConfig}
-            hasConfig={hasConfig}
-            auth={auth}
-          />
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <OAuthReturnHandler>
+      <Routes>
+        <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
+        <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
+        <Route path="/upload" element={<RequireAuth><UploadPage /></RequireAuth>} />
+        <Route path="/source/:sourceId/kpis" element={<RequireAuth><KPIBuilderPage /></RequireAuth>} />
+        <Route path="/source/:sourceId" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+        <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+        <Route path="/source/:sourceId/report" element={<RequireAuth><ReportPage /></RequireAuth>} />
+        <Route path="/source/:sourceId/update" element={<RequireAuth><ReuploadPage /></RequireAuth>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </OAuthReturnHandler>
   )
 }
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || ''}>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </GoogleOAuthProvider>
-    </ErrorBoundary>
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   )
 }

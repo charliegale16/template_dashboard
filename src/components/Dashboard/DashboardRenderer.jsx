@@ -1,26 +1,59 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSheetData } from '../../hooks/useSheetData'
-import { formatAge } from '../../utils/sheetCache'
-import { DATE_PRESETS, describeDateRange } from '../../utils/dateFilters'
 import { makeWidget } from '../../widgets/registry'
 import WidgetGrid from './WidgetGrid'
 import AddWidgetPanel from './AddWidgetPanel'
+import DashboardSidebar from './DashboardSidebar'
 
 export default function DashboardRenderer({ config, saveConfig, auth }) {
   const navigate = useNavigate()
+  const [reauthNeeded, setReauthNeeded] = useState(false)
 
   function handleAuthError() {
-    auth.logout()
-    navigate('/setup')
+    setReauthNeeded(true)
   }
 
-  const { filteredTabDataMap, loading, error, cachedAt, refetch } = useSheetData(config, auth.accessToken, handleAuthError)
-  const [showDateFilter, setShowDateFilter] = useState(false)
+  const { filteredTabDataMap, loading, error, cachedAt, refetch } = useSheetData(
+    config,
+    auth.accessToken,
+    handleAuthError,
+  )
+
+  // Detect a genuine new token (successful re-login) by comparing to the previous value.
+  // We cannot use isAuthenticated here — the expired token string keeps it true.
+  const prevTokenRef = useRef(auth.accessToken)
+  useEffect(() => {
+    const prev = prevTokenRef.current
+    prevTokenRef.current = auth.accessToken
+    if (reauthNeeded && auth.accessToken && auth.accessToken !== prev) {
+      setReauthNeeded(false)
+      refetch(true)
+    }
+  }, [auth.accessToken, reauthNeeded, refetch])
+
   const [editMode, setEditMode] = useState(false)
   const [showAddPanel, setShowAddPanel] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // Tick every 30s so the "X min ago" label stays accurate
+  // Tabs that have at least one column mapped
+  const configuredTabs = useMemo(() => {
+    return (config.sheetTabs || (config.sheetName ? [config.sheetName] : [])).filter((tab) => {
+      const m = config.tabMappings?.[tab]
+      return m && Object.values(m).some(Boolean)
+    })
+  }, [config.sheetTabs, config.sheetName, config.tabMappings])
+
+  const [activeDashboardTab, setActiveDashboardTab] = useState(() => configuredTabs[0] ?? null)
+
+  // Keep active tab valid when tabs change
+  useEffect(() => {
+    if (configuredTabs.length && !configuredTabs.includes(activeDashboardTab)) {
+      setActiveDashboardTab(configuredTabs[0])
+    }
+  }, [configuredTabs, activeDashboardTab])
+
+  // Tick every 30s so "X min ago" stays accurate
   const [, setTick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 30_000)
@@ -54,204 +87,109 @@ export default function DashboardRenderer({ config, saveConfig, auth }) {
     saveConfig({ widgets })
   }, [config.widgets, saveConfig])
 
-  const title = config.dashboardName || 'Analytics Dashboard'
+  function handleReauth() {
+    auth.login()
+  }
+
+  const activeTabData = filteredTabDataMap[activeDashboardTab] ?? { headers: [], rows: [] }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top nav */}
-      <header className={[
-        'bg-white border-b sticky top-0 z-10 transition-colors',
-        editMode ? 'border-brand-300 bg-brand-50/40' : 'border-gray-200',
-      ].join(' ')}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Sidebar */}
+      <DashboardSidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        dashboardName={config.dashboardName}
+        tabs={configuredTabs}
+        activeTab={activeDashboardTab}
+        onTabChange={(tab) => setActiveDashboardTab(tab)}
+        config={config}
+        saveConfig={saveConfig}
+        loading={loading}
+        cachedAt={cachedAt}
+        onRefresh={() => refetch(true)}
+        editMode={editMode}
+        onToggleEditMode={() => { setEditMode((v) => !v); setShowAddPanel(false) }}
+        onAddWidget={() => setShowAddPanel(true)}
+        onSettings={() => navigate('/setup')}
+        onHome={() => navigate('/')}
+      />
+
+      {/* Main area — offset on large screens */}
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-60">
+        {/* Top header */}
+        <header className={[
+          'bg-white border-b sticky top-0 z-10 transition-colors',
+          editMode ? 'border-brand-300 bg-brand-50/40' : 'border-gray-200',
+        ].join(' ')}>
+          <div className="h-14 px-4 sm:px-6 flex items-center justify-between gap-3">
+            {/* Left: hamburger (mobile) + active tab name */}
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                className="lg:hidden p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Open sidebar"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <h1 className="font-semibold text-gray-900 text-sm truncate">
+                {activeDashboardTab || config.dashboardName || 'Dashboard'}
+              </h1>
+              {editMode && (
+                <span className="text-xs font-medium text-brand-600 bg-brand-100 px-2 py-0.5 rounded-full shrink-0">
+                  Editing
+                </span>
+              )}
             </div>
-            <h1 className="font-semibold text-gray-900 text-sm">{title}</h1>
-            {editMode && (
-              <span className="text-xs font-medium text-brand-600 bg-brand-100 px-2 py-0.5 rounded-full">
-                Editing
+
+            {/* Right: row count */}
+            {!loading && activeDashboardTab && (
+              <span className="text-xs text-gray-400 shrink-0">
+                {activeTabData.rows.length} row{activeTabData.rows.length !== 1 ? 's' : ''}
               </span>
             )}
           </div>
+        </header>
 
-          <div className="flex items-center gap-2">
-            {!editMode && (
-              <>
-                <button
-                  className="btn-secondary text-xs px-3 py-1.5"
-                  onClick={() => setShowDateFilter((v) => !v)}
-                >
-                  <svg className="w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span className="hidden sm:inline">{describeDateRange(config.dateRange)}</span>
-                  <span className="sm:hidden">Dates</span>
-                </button>
-                <div className="flex items-center gap-1.5">
-                  {cachedAt && !loading && (
-                    <span className="text-xs text-gray-400 hidden sm:inline">
-                      {formatAge(cachedAt)}
-                    </span>
-                  )}
-                  <button
-                    className="btn-secondary text-xs px-3 py-1.5"
-                    onClick={() => refetch(true)}
-                    disabled={loading}
-                    title="Force-fetch fresh data from Google Sheets"
-                  >
-                    <svg className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    {loading ? 'Refreshing…' : 'Refresh'}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {editMode && (
-              <button
-                className="btn-secondary text-xs px-3 py-1.5"
-                onClick={() => setShowAddPanel(true)}
-              >
-                <svg className="w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add widget
-              </button>
-            )}
-
-            <button
-              className={editMode ? 'btn-primary text-xs px-3 py-1.5' : 'btn-secondary text-xs px-3 py-1.5'}
-              onClick={() => { setEditMode((v) => !v); setShowAddPanel(false) }}
-            >
-              {editMode ? (
-                <>
-                  <svg className="w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Done
-                </>
-              ) : (
-                <>
-                  <svg className="w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                  </svg>
-                  Edit layout
-                </>
-              )}
-            </button>
-
-            {!editMode && (
-              <button
-                className="btn-primary text-xs px-3 py-1.5"
-                onClick={() => navigate('/setup')}
-              >
-                <svg className="w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Settings
-              </button>
-            )}
+        {/* Edit mode hint bar */}
+        {editMode && (
+          <div className="bg-brand-50 border-b border-brand-100 px-4 py-2">
+            <p className="text-xs text-brand-700 text-center">
+              Hover a widget to resize, reorder, or remove it. Click <strong>Add widget</strong> in the sidebar to add new ones.
+            </p>
           </div>
-        </div>
-      </header>
+        )}
 
-      {/* Date filter panel */}
-      {showDateFilter && !editMode && (
-        <div className="bg-white border-b border-gray-100 px-4 sm:px-6 lg:px-8 py-3">
-          <div className="max-w-7xl mx-auto flex items-center gap-3 flex-wrap">
-            <span className="text-xs font-medium text-gray-600 shrink-0">Date range:</span>
-            <div className="flex flex-wrap gap-1.5">
-              {DATE_PRESETS.filter((p) => p.id !== 'custom').map((p) => {
-                const active = (config.dateRange?.preset || 'all_time') === p.id
-                return (
-                  <button
-                    key={p.id}
-                    className={[
-                      'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors',
-                      active
-                        ? 'bg-brand-600 text-white border-brand-600'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-brand-400',
-                    ].join(' ')}
-                    onClick={() => saveConfig({ dateRange: { preset: p.id, start: '', end: '' } })}
-                  >
-                    {p.label}
-                  </button>
-                )
-              })}
-              <button
-                className={[
-                  'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors',
-                  config.dateRange?.preset === 'custom'
-                    ? 'bg-brand-600 text-white border-brand-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-brand-400',
-                ].join(' ')}
-                onClick={() => saveConfig({ dateRange: { preset: 'custom', start: config.dateRange?.start || '', end: config.dateRange?.end || '' } })}
-              >
-                Custom
+        {/* Main content */}
+        <main className="flex-1 px-4 sm:px-6 py-6">
+          {error && (
+            <div className="mb-5 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+              <span>{error}</span>
+              <button onClick={refetch} className="text-red-600 hover:underline text-xs ml-4">
+                Retry
               </button>
             </div>
-            {config.dateRange?.preset === 'custom' && (
-              <div className="flex items-center gap-2 ml-1">
-                <input
-                  type="date"
-                  className="input text-xs py-1 w-36"
-                  value={config.dateRange?.start || ''}
-                  onChange={(e) => saveConfig({ dateRange: { ...config.dateRange, start: e.target.value } })}
-                />
-                <span className="text-gray-400 text-xs">to</span>
-                <input
-                  type="date"
-                  className="input text-xs py-1 w-36"
-                  value={config.dateRange?.end || ''}
-                  onChange={(e) => saveConfig({ dateRange: { ...config.dateRange, end: e.target.value } })}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Edit mode hint bar */}
-      {editMode && (
-        <div className="bg-brand-50 border-b border-brand-100 px-4 py-2">
-          <p className="max-w-7xl mx-auto text-xs text-brand-700 text-center">
-            Hover a widget to resize (S/M/L/Full), reorder, or remove it. Click <strong>+ Add widget</strong> to add new ones.
-          </p>
-        </div>
-      )}
-
-      {/* Main content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {error && (
-          <div className="mb-5 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
-            <span>{error}</span>
-            <button onClick={refetch} className="text-red-600 hover:underline text-xs ml-4">
-              Retry
-            </button>
-          </div>
-        )}
-
-        {loading && !Object.keys(filteredTabDataMap).length ? (
-          <LoadingSkeleton />
-        ) : (
-          <WidgetGrid
-            widgets={config.widgets}
-            filteredTabDataMap={filteredTabDataMap}
-            config={config}
-            editMode={editMode}
-            onUpdate={handleUpdateWidget}
-            onRemove={handleRemoveWidget}
-            onMove={handleMoveWidget}
-            onAdd={() => setShowAddPanel(true)}
-          />
-        )}
-      </main>
+          {loading && !activeTabData.rows.length ? (
+            <LoadingSkeleton />
+          ) : (
+            <WidgetGrid
+              widgets={config.widgets}
+              tabData={activeTabData}
+              activeTab={activeDashboardTab}
+              config={config}
+              editMode={editMode}
+              onUpdate={handleUpdateWidget}
+              onRemove={handleRemoveWidget}
+              onMove={handleMoveWidget}
+              onAdd={() => setShowAddPanel(true)}
+            />
+          )}
+        </main>
+      </div>
 
       <AddWidgetPanel
         open={showAddPanel}
@@ -259,6 +197,40 @@ export default function DashboardRenderer({ config, saveConfig, auth }) {
         onAdd={handleAddWidget}
         onClose={() => setShowAddPanel(false)}
       />
+
+      {/* Session-expired reauth modal */}
+      {reauthNeeded && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900 text-sm">Session expired</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Sign in again to keep your dashboard live.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleReauth}
+              className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12.545 10.239v3.821h5.445c-.712 2.315-2.647 3.972-5.445 3.972a6.033 6.033 0 110-12.064c1.498 0 2.866.549 3.921 1.453l2.814-2.814A9.969 9.969 0 0012.545 2C7.021 2 2.543 6.477 2.543 12s4.478 10 10.002 10c8.396 0 10.249-7.85 9.426-11.748l-9.426-.013z" />
+              </svg>
+              Continue with Google
+            </button>
+            <button
+              onClick={() => { setReauthNeeded(false); navigate('/setup') }}
+              className="w-full text-xs text-gray-400 hover:text-gray-600 text-center"
+            >
+              Go to settings instead
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

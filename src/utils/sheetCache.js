@@ -9,8 +9,10 @@
  * cache entirely and write a fresh entry.
  */
 
-const PREFIX = 'sheet_cache_'
-export const TTL_MS = 5 * 60 * 1000 // 5 minutes
+const PREFIX      = 'sheet_cache_'
+const TABS_PREFIX = 'sheet_tabs_'
+export const TTL_MS      = 5  * 60 * 1000  // 5 min  — row data
+export const TABS_TTL_MS = 10 * 60 * 1000  // 10 min — tab list (structure changes rarely)
 
 function key(sheetId, tabName) {
   return `${PREFIX}${sheetId}_${tabName}`
@@ -52,8 +54,33 @@ export function invalidateCache(sheetId, tabName) {
 /** Removes all cached sheet entries (e.g. on logout or config change). */
 export function invalidateAll() {
   Object.keys(localStorage)
-    .filter((k) => k.startsWith(PREFIX))
+    .filter((k) => k.startsWith(PREFIX) || k.startsWith(TABS_PREFIX))
     .forEach((k) => localStorage.removeItem(k))
+}
+
+/** Returns cached tab names for a sheet, or null if stale/missing. */
+export function getCachedTabs(sheetId) {
+  try {
+    const raw = localStorage.getItem(TABS_PREFIX + sheetId)
+    if (!raw) return null
+    const entry = JSON.parse(raw)
+    if (Date.now() - entry.cachedAt > TABS_TTL_MS) {
+      localStorage.removeItem(TABS_PREFIX + sheetId)
+      return null
+    }
+    return entry.tabs
+  } catch {
+    return null
+  }
+}
+
+/** Persists tab names for a sheet. */
+export function setCachedTabs(sheetId, tabs) {
+  try {
+    localStorage.setItem(TABS_PREFIX + sheetId, JSON.stringify({ tabs, cachedAt: Date.now() }))
+  } catch {
+    // fail silently
+  }
 }
 
 /** Human-readable age string: "just now", "2 min ago", "1 hr ago". */
