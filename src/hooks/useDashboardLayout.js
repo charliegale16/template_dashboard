@@ -17,7 +17,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 6   // ← bumped: ROW_HEIGHT 40→32, compact KPI (h=2) + chart h=5
+const LAYOUT_VERSION  = 7   // ← bumped: KPI minH 2→1, maxH 10→30, removed overflow-hidden
 const MAX_SNAPSHOTS   = 10
 
 // ROW_HEIGHT = 32px, GAP = 12px  (set in DashboardPage)
@@ -27,7 +27,7 @@ const SIZE_CONFIG = {
   kpi: {
     w: 3, h: 2,
     minW: 2, maxW: 12,
-    minH: 2, maxH: 10,
+    minH: 1, maxH: 30,
   },
   line_chart: {
     w: 12, h: 5,

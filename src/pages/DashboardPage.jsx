@@ -175,7 +175,7 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
   const showTrend = h >= 3   // only show trend row when there's enough height
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 h-full flex flex-col overflow-hidden">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 h-full flex flex-col">
 
       {/* Top bar: label + S/M/L + drag grip — all in one tight row */}
       <div className="flex items-center gap-1 px-2.5 pt-2 pb-0 shrink-0">
