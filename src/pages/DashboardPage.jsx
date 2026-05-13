@@ -25,8 +25,8 @@ import { SYNC_SCHEDULES, MIN_SYNC_INTERVAL_S } from '../features/integrations/sh
 function timeAgo(iso) {
   if (!iso) return null
   const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (secs < 60)   return 'just now'
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  if (secs < 60)    return 'just now'
+  if (secs < 3600)  return `${Math.floor(secs / 60)}m ago`
   if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
   return `${Math.floor(secs / 86400)}d ago`
 }
@@ -77,7 +77,7 @@ function filterRowsByDate(rows, dateCol, filter) {
       const cutoff = new Date(); cutoff.setDate(now.getDate() - filter.value)
       return d >= cutoff
     }
-    if (filter.type === 'ytd') return d >= new Date(now.getFullYear(), 0, 1) && d <= now
+    if (filter.type === 'ytd')  return d >= new Date(now.getFullYear(), 0, 1) && d <= now
     if (filter.type === 'year') return d.getFullYear() === filter.value
     return true
   })
@@ -88,11 +88,10 @@ function filterRowsByDate(rows, dateCol, filter) {
 function buildPreviousPeriodRows(allRows, dateCol, filter, colFilters) {
   if (!dateCol || filter.type === 'all') return []
   const now = new Date()
-
   let prevRows = []
 
   if (filter.type === 'days') {
-    const days = filter.value
+    const days        = filter.value
     const periodEnd   = new Date(); periodEnd.setDate(now.getDate() - days)
     const periodStart = new Date(); periodStart.setDate(now.getDate() - days * 2)
     prevRows = allRows.filter((r) => {
@@ -100,7 +99,7 @@ function buildPreviousPeriodRows(allRows, dateCol, filter, colFilters) {
       return d && d >= periodStart && d < periodEnd
     })
   } else if (filter.type === 'ytd') {
-    const yearStart = new Date(now.getFullYear() - 1, 0, 1)
+    const yearStart  = new Date(now.getFullYear() - 1, 0, 1)
     const yearCutoff = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
     prevRows = allRows.filter((r) => {
       const d = parseDate(r.data?.[dateCol])
@@ -117,7 +116,7 @@ function buildPreviousPeriodRows(allRows, dateCol, filter, colFilters) {
   return prevRows
 }
 
-// ── Shared chart helpers ──────────────────────────────────────────────────────
+// ── Shared chart axis/tooltip helpers ─────────────────────────────────────────
 
 function shortNum(v) {
   if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
@@ -125,12 +124,33 @@ function shortNum(v) {
   return Number(v.toFixed(2)).toString()
 }
 
-// ── Size preset definitions ───────────────────────────────────────────────────
-// GRID_COLS=24, ROW_HEIGHT=31, GAP=8
-//   S w=2  h=3  → 109px tall × ~110-126px wide  ≈ 122×122
-//   M w=4  h=6  → 226px tall × ~220-250px wide  ≈ 233×233
-//   L w=6  h=9  → 343px tall × ~330-376px wide  ≈ 333×333
-//   Chart h=8   → 304px tall, full or half width
+const AXIS_PROPS = {
+  tick:     { fontSize: 11, fill: '#9ca3af' },
+  tickLine: false,
+  axisLine: false,
+}
+
+const TOOLTIP_STYLE = {
+  contentStyle: {
+    fontSize: 12,
+    borderRadius: 8,
+    border: '1px solid #e5e7eb',
+    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.07)',
+  },
+  formatter: shortNum,
+}
+
+// ── Grid / preset constants ───────────────────────────────────────────────────
+// GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px
+//   pixel height formula: h × 31 + (h-1) × 8 = 39h - 8
+//   S  w=2  h=3  → 109px tall  × ~120px wide   ≈ 122 × 122
+//   M  w=4  h=6  → 226px tall  × ~240px wide   ≈ 233 × 233
+//   L  w=6  h=9  → 343px tall  × ~360px wide   ≈ 333 × 333
+//   Chart h=8    → 304px tall, ½ (w=12) or full (w=24)
+
+const ROW_HEIGHT = 31
+const GRID_GAP   = 8
+const GRID_COLS  = 24
 
 const KPI_PRESETS = [
   { label: 'S', w: 2, h: 3 },
@@ -139,20 +159,21 @@ const KPI_PRESETS = [
 ]
 
 const CHART_PRESETS = [
-  { label: '½',  w: 12 },
+  { label: '½', w: 12 },
   { label: '■', w: 24 },
 ]
 
-// Value font scales with tile height so it fills the space naturally
+// KPI value font scales with tile height (grid rows)
 function kpiValueClass(h) {
   if (h >= 9)  return 'text-4xl'
   if (h >= 6)  return 'text-3xl'
   if (h >= 3)  return 'text-xl'
-  return 'text-lg'
+  return 'text-base'
 }
 
-// Shared grip dots SVG
-function GripDots({ className = 'w-3.5 h-3.5 text-gray-300 dark:text-gray-600' }) {
+// ── Shared grip icon ──────────────────────────────────────────────────────────
+
+function GripDots({ className = 'w-3 h-3 text-gray-300 dark:text-gray-600' }) {
   return (
     <svg className={className} fill="currentColor" viewBox="0 0 20 20">
       <circle cx="7"  cy="4"  r="1.4"/><circle cx="13" cy="4"  r="1.4"/>
@@ -162,7 +183,26 @@ function GripDots({ className = 'w-3.5 h-3.5 text-gray-300 dark:text-gray-600' }
   )
 }
 
+// ── Trend arrow ───────────────────────────────────────────────────────────────
+
+function TrendArrow({ up }) {
+  return up ? (
+    <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
+    </svg>
+  ) : (
+    <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+    </svg>
+  )
+}
+
 // ── KPI Card ──────────────────────────────────────────────────────────────────
+// Layout contract:
+//   - Parent (react-grid-layout item) has explicit pixel height via inline style
+//   - This card fills it with h-full flex-col
+//   - NO overflow-hidden — it would clip the react-resizable drag handle
+//   - flex-1 min-h-0 on the value section prevents flex children from overflowing
 
 function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
   const value     = useMemo(() => computeKPI(rows, kpi.formula),     [rows, kpi.formula])
@@ -176,18 +216,18 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
 
   const isUp      = trendPct !== null && trendPct >= 0
   const h         = layoutItem?.h ?? 3
-  const showTrend = h >= 5   // trend row visible once tile has enough height
+  const showTrend = trendPct !== null && h >= 5
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 h-full flex flex-col">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
 
-      {/* Top bar: label + S/M/L + drag grip */}
-      <div className="flex items-center gap-1.5 px-3 pt-2.5 shrink-0">
-        <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 truncate flex-1 min-w-0">
+      {/* Header: label + S/M/L buttons + drag grip */}
+      <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 shrink-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 truncate flex-1 min-w-0">
           {kpi.name}
         </p>
 
-        {/* S / M / L presets */}
+        {/* Size presets */}
         <div className="flex items-center gap-px shrink-0">
           {KPI_PRESETS.map((p) => {
             const active = layoutItem?.h === p.h
@@ -198,7 +238,7 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
                 onClick={() => onSizePreset?.(kpi.id, p.w, p.h)}
                 className={`text-[9px] font-bold w-4 h-4 rounded flex items-center justify-center transition-colors leading-none ${
                   active
-                    ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300'
+                    ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
                     : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-500 dark:hover:text-gray-400'
                 }`}
                 title={p.label === 'S' ? 'Small' : p.label === 'M' ? 'Medium' : 'Large'}
@@ -211,26 +251,20 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
 
         {/* Drag grip */}
         <div className="drag-handle cursor-grab active:cursor-grabbing shrink-0 flex items-center">
-          <GripDots className="w-3 h-3 text-gray-300 dark:text-gray-600" />
+          <GripDots />
         </div>
       </div>
 
-      {/* Value — vertically centred, font scales with tile height */}
-      <div className="flex-1 flex flex-col items-start justify-center px-3 pb-3 min-h-0 gap-1">
+      {/* Value area — flex-1 min-h-0 prevents flex overflow */}
+      <div className="flex-1 min-h-0 flex flex-col items-start justify-center px-3 pb-2.5 gap-1">
         <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums`}>
           {formatted}
         </p>
-        {showTrend && trendPct !== null && (
-          <p className={`text-xs font-medium flex items-center gap-0.5 ${isUp ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
-            {isUp ? (
-              <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
-              </svg>
-            ) : (
-              <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
-              </svg>
-            )}
+        {showTrend && (
+          <p className={`text-xs font-medium flex items-center gap-0.5 ${
+            isUp ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
+          }`}>
+            <TrendArrow up={isUp} />
             <span>{Math.abs(trendPct).toFixed(1)}% vs prior period</span>
           </p>
         )}
@@ -241,6 +275,13 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
 }
 
 // ── Chart Widget ──────────────────────────────────────────────────────────────
+// Layout contract:
+//   - Parent (react-grid-layout item) has explicit pixel height via inline style
+//   - Card is h-full flex-col: fixed-height header (shrink-0) + chart body (flex-1 min-h-0)
+//   - Chart body uses position:relative so the absolute-inset child gets a real pixel height
+//   - The absolute-inset div creates a proper positioning context for ResponsiveContainer
+//   - ResponsiveContainer height="100%" resolves against its absolutely-positioned parent,
+//     not the flex item (flex items don't expose a CSS height property for % resolution)
 
 function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
   const data    = useMemo(() => getChartData(rows, widget.formula), [rows, widget.formula])
@@ -248,29 +289,58 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
   const stroke1 = STROKE_COLOR[widget.color]  ?? '#3b82f6'
   const stroke2 = STROKE_COLOR_2[widget.color] ?? '#f59e0b'
 
-  const axisProps = {
-    tick:     { fontSize: 11, fill: '#9ca3af' },
-    tickLine: false,
-    axisLine: false,
-  }
-  const tooltipStyle = {
-    contentStyle: { fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' },
-    formatter: shortNum,
+  const renderChart = () => {
+    if (wt === 'bar_chart') {
+      return (
+        <BarChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+          <XAxis dataKey="x" {...AXIS_PROPS} interval={0} />
+          <YAxis {...AXIS_PROPS} width={48} tickFormatter={shortNum} />
+          <Tooltip {...TOOLTIP_STYLE} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+          <Bar
+            dataKey="y"
+            name={widget.formula?.y_label || widget.formula?.y_column || 'Value'}
+            fill={stroke1}
+            radius={[3, 3, 0, 0]}
+            maxBarSize={48}
+          />
+        </BarChart>
+      )
+    }
+    if (wt === 'comparison') {
+      return (
+        <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis dataKey="x" {...AXIS_PROPS} interval="preserveStartEnd" />
+          <YAxis {...AXIS_PROPS} width={48} tickFormatter={shortNum} />
+          <Tooltip {...TOOLTIP_STYLE} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Line type="monotone" dataKey="y1" name={widget.formula?.y1_label || 'Series 1'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+          <Line type="monotone" dataKey="y2" name={widget.formula?.y2_label || 'Series 2'} stroke={stroke2} strokeWidth={2} dot={false} strokeDasharray="5 3" activeDot={{ r: 4, strokeWidth: 0 }} />
+        </LineChart>
+      )
+    }
+    return (
+      <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+        <XAxis dataKey="x" {...AXIS_PROPS} interval="preserveStartEnd" />
+        <YAxis {...AXIS_PROPS} width={48} tickFormatter={shortNum} />
+        <Tooltip {...TOOLTIP_STYLE} />
+        <Line type="monotone" dataKey="y" name={widget.formula?.y_label || widget.formula?.y_column || 'Value'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+      </LineChart>
+    )
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm h-full flex flex-col">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
 
-      {/* Header: drag area (title + grip) | size presets (non-draggable) */}
+      {/* Header: drag zone (title + grip) | width presets */}
       <div className="flex items-center shrink-0 px-4 pt-3 pb-2 gap-2">
-
-        {/* Drag zone — title + grip */}
         <div className="drag-handle flex items-center gap-2 flex-1 min-w-0 cursor-grab active:cursor-grabbing">
-          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate flex-1">{widget.name}</p>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{widget.name}</p>
           <GripDots />
         </div>
 
-        {/* ½ / Full width presets — NOT inside drag handle */}
         <div className="flex items-center gap-px shrink-0">
           {CHART_PRESETS.map((p) => {
             const active = layoutItem?.w === p.w
@@ -281,80 +351,61 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
                 onClick={() => onSizePreset?.(widget.id, p.w, layoutItem?.h ?? 8)}
                 className={`text-[10px] font-semibold px-2 h-5 rounded flex items-center justify-center transition-colors ${
                   active
-                    ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300'
+                    ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
                     : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-500 dark:hover:text-gray-400'
                 }`}
-                title={p.w === 6 ? 'Half width' : 'Full width'}
+                title={p.w === 12 ? 'Half width' : 'Full width'}
               >
                 {p.label}
               </button>
             )
           })}
         </div>
-
       </div>
 
-      <div className="flex-1 px-4 pb-4 min-h-0">
+      {/* Chart body
+          position:relative creates a containing block with a real pixel height.
+          The absolute-inset child fills it exactly, giving ResponsiveContainer
+          a reliable pixel height so height="100%" resolves correctly.
+          Without this, height="100%" inside flex-1 resolves to "auto" in CSS. */}
+      <div className="relative flex-1 min-h-0">
         {!data.length ? (
-          <p className="text-xs text-gray-400 mt-2">No data available for this chart.</p>
+          <p className="absolute top-2 left-4 text-xs text-gray-400 dark:text-gray-500">
+            No data available for this chart.
+          </p>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            {wt === 'bar_chart' ? (
-              <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="x" {...axisProps} interval={0} />
-                <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
-                <Tooltip {...tooltipStyle} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-                <Bar dataKey="y" name={widget.formula?.y_label || widget.formula?.y_column || 'Value'} fill={stroke1} radius={[3,3,0,0]} maxBarSize={48} />
-              </BarChart>
-            ) : wt === 'comparison' ? (
-              <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="x" {...axisProps} interval="preserveStartEnd" />
-                <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
-                <Tooltip {...tooltipStyle} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="y1" name={widget.formula?.y1_label || 'Series 1'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                <Line type="monotone" dataKey="y2" name={widget.formula?.y2_label || 'Series 2'} stroke={stroke2} strokeWidth={2} dot={false} strokeDasharray="5 3" activeDot={{ r: 4, strokeWidth: 0 }} />
-              </LineChart>
-            ) : (
-              <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="x" {...axisProps} interval="preserveStartEnd" />
-                <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
-                <Tooltip {...tooltipStyle} />
-                <Line type="monotone" dataKey="y" name={widget.formula?.y_label || widget.formula?.y_column || 'Value'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-              </LineChart>
-            )}
-          </ResponsiveContainer>
+          <div style={{ position: 'absolute', inset: '2px 12px 14px 4px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {renderChart()}
+            </ResponsiveContainer>
+          </div>
         )}
       </div>
+
     </div>
   )
 }
 
-// ── Unified Widget Grid (KPIs + Charts) ───────────────────────────────────────
-
-const ROW_HEIGHT = 31
-const GRID_GAP   = 8
-const GRID_COLS  = 24
+// ── Widget Grid ───────────────────────────────────────────────────────────────
+// ResizeObserver measures the true container width so GridLayout renders
+// correctly at any viewport without needing a responsive breakpoint config.
 
 function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoaded }) {
   const containerRef = useRef(null)
   const [width, setWidth] = useState(900)
 
   useEffect(() => {
-    if (!containerRef.current) return
+    const el = containerRef.current
+    if (!el) return
     const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
-    ro.observe(containerRef.current)
+    ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  // Apply a preset size to a single widget and persist
   const handleSizePreset = useCallback((widgetId, newW, newH) => {
     const updated = layout.map((item) =>
       item.i === widgetId
-        ? { ...item, w: Math.min(newW, item.maxW ?? 12), h: Math.min(newH, item.maxH ?? 24) }
+        ? { ...item, w: Math.min(newW, item.maxW ?? GRID_COLS), h: Math.min(newH, item.maxH ?? 30) }
         : item
     )
     onLayoutChange(updated)
@@ -377,14 +428,15 @@ function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoa
         isDraggable
       >
         {widgets.map((w) => {
-          const wt = w.formula?.widget_type
-          const isKPI = !wt || wt === 'kpi'
-          const layoutItem = layout.find((l) => l.i === w.id)
+          const wt      = w.formula?.widget_type
+          const isKPI   = !wt || wt === 'kpi'
+          const item    = layout.find((l) => l.i === w.id)
           return (
             <div key={w.id}>
               {isKPI
-                ? <KPICard kpi={w} rows={rows} prevRows={prevRows} layoutItem={layoutItem} onSizePreset={handleSizePreset} />
-                : <ChartWidget widget={w} rows={rows} layoutItem={layoutItem} onSizePreset={handleSizePreset} />}
+                ? <KPICard    kpi={w}    rows={rows} prevRows={prevRows} layoutItem={item} onSizePreset={handleSizePreset} />
+                : <ChartWidget widget={w} rows={rows}                     layoutItem={item} onSizePreset={handleSizePreset} />
+              }
             </div>
           )
         })}
@@ -393,14 +445,14 @@ function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoa
   )
 }
 
-// ── Skeleton ──────────────────────────────────────────────────────────────────
+// ── Loading skeleton ──────────────────────────────────────────────────────────
 
 function Skeleton() {
   return (
-    <div className="space-y-6 animate-pulse">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-28 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700" />
+    <div className="space-y-4 animate-pulse">
+      <div className="flex gap-4">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-28 w-28 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shrink-0" />
         ))}
       </div>
       <div className="h-64 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700" />
@@ -437,9 +489,7 @@ export default function DashboardPage() {
   const isSheet = Boolean(source?.meta?.sheetId)
 
   // ── Sheet sync ────────────────────────────────────────────────────────────
-  const handleSyncComplete = useCallback((updated) => {
-    setSource(updated)
-  }, [])
+  const handleSyncComplete = useCallback((updated) => setSource(updated), [])
 
   const { sync, syncing, lastResult, error: syncError, updateSchedule } =
     useSheetSync(source, userId, accessToken, handleSyncComplete)
@@ -505,7 +555,7 @@ export default function DashboardPage() {
   const [saveViewName,  setSaveViewName]  = useState('')
   const [savingView,    setSavingView]    = useState(false)
   const [viewsOpen,     setViewsOpen]     = useState(false)
-  const viewsRef   = useRef(null)
+  const viewsRef     = useRef(null)
   const saveInputRef = useRef(null)
 
   useEffect(() => {
@@ -514,7 +564,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!viewsOpen) return
-    const handler = (e) => { if (viewsRef.current && !viewsRef.current.contains(e.target)) setViewsOpen(false) }
+    const handler = (e) => {
+      if (viewsRef.current && !viewsRef.current.contains(e.target)) setViewsOpen(false)
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [viewsOpen])
@@ -556,9 +608,19 @@ export default function DashboardPage() {
           .no-print { display: none !important; }
           body { background: white; }
         }
-        .react-grid-item.react-grid-placeholder { background: #6366f1 !important; opacity: 0.12 !important; border-radius: 12px; }
-        .react-resizable-handle { opacity: 0; transition: opacity 0.15s; }
-        .react-grid-item:hover .react-resizable-handle { opacity: 1; }
+        .react-grid-item.react-grid-placeholder {
+          background: #6366f1 !important;
+          opacity: 0.1 !important;
+          border-radius: 12px;
+        }
+        /* Resize handle: hidden at rest, visible on hover */
+        .react-resizable-handle {
+          opacity: 0;
+          transition: opacity 0.15s;
+        }
+        .react-grid-item:hover .react-resizable-handle {
+          opacity: 1;
+        }
       `}</style>
 
       {/* ── Header ── */}
@@ -588,7 +650,6 @@ export default function DashboardPage() {
             {/* Sheet sync controls */}
             {isSheet && (
               <>
-                {/* Sync status chip */}
                 <span className={`text-xs font-medium rounded-lg border py-1.5 px-2.5 flex items-center gap-1.5 ${
                   syncing
                     ? 'border-blue-200 text-blue-600 dark:border-blue-700 dark:text-blue-400'
@@ -623,7 +684,6 @@ export default function DashboardPage() {
                   )}
                 </span>
 
-                {/* Schedule select */}
                 <select
                   value={source?.meta?.sync_schedule ?? 'manual'}
                   onChange={(e) => updateSchedule(e.target.value)}
@@ -635,7 +695,6 @@ export default function DashboardPage() {
                   ))}
                 </select>
 
-                {/* Manual refresh */}
                 <button
                   onClick={sync}
                   disabled={syncing}
@@ -666,7 +725,10 @@ export default function DashboardPage() {
                   ref={saveInputRef}
                   value={saveViewName}
                   onChange={(e) => setSaveViewName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveView(); if (e.key === 'Escape') { setSaveViewOpen(false); setSaveViewName('') } }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter')  handleSaveView()
+                    if (e.key === 'Escape') { setSaveViewOpen(false); setSaveViewName('') }
+                  }}
                   placeholder="View name…"
                   className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 w-32 bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
@@ -779,7 +841,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Sync error detail */}
+        {/* Sync error */}
         {syncError && (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-700 dark:text-amber-400 no-print">
             Sync failed: {syncError}
@@ -791,7 +853,6 @@ export default function DashboardPage() {
           <div className="flex items-start gap-2 flex-wrap no-print">
             <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 mt-1">Filter:</span>
 
-            {/* Date pills */}
             {dateCol && ROLLING_FILTERS.map((f) => (
               <button
                 key={f.label}
@@ -806,7 +867,6 @@ export default function DashboardPage() {
               </button>
             ))}
 
-            {/* Year selector */}
             {dateCol && availableYears.length > 0 && (
               <div className="relative">
                 <select
@@ -835,7 +895,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Column filter chips */}
             {colFilters.map((f, idx) => {
               const opLabel = FILTER_OPERATORS.find((o) => o.value === f.operator)?.label ?? f.operator
               return (
@@ -851,7 +910,6 @@ export default function DashboardPage() {
               )
             })}
 
-            {/* Add column filter */}
             {addingFilter ? (
               <div className="flex items-center gap-1 flex-wrap">
                 <select
@@ -890,7 +948,6 @@ export default function DashboardPage() {
               </button>
             )}
 
-            {/* Clear all + row count */}
             {(colFilters.length > 0 || dateFilter.type !== 'all') && (
               <button
                 onClick={() => { setColFilters([]); setDateFilter({ type: 'all', value: null }) }}
@@ -932,6 +989,7 @@ export default function DashboardPage() {
             layoutLoaded={layoutLoaded}
           />
         )}
+
       </main>
     </div>
   )
