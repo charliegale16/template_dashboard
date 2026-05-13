@@ -153,9 +153,9 @@ const GRID_GAP   = 8
 const GRID_COLS  = 24
 
 const KPI_PRESETS = [
-  { label: 'S', w: 3, h: 2 },
-  { label: 'M', w: 6, h: 4 },
-  { label: 'L', w: 9, h: 6 },
+  { label: 'S', w: 2, h: 1 },
+  { label: 'M', w: 3, h: 2 },
+  { label: 'L', w: 5, h: 3 },
 ]
 
 const CHART_PRESETS = [
@@ -585,8 +585,6 @@ function PeriodComparisonWidget({ widget, rows, prevRows, layoutItem, onSizePres
 function WidgetGrid({ widgets, rows, prevRows, layout, layoutEpoch, onLayoutChange, layoutLoaded }) {
   const containerRef            = useRef(null)
   const [width, setWidth]       = useState(0)
-  const [localEpoch, setLocalEpoch] = useState(0)
-
   // Measure synchronously on mount so GridLayout gets the real width on its first render
   useEffect(() => {
     const el = containerRef.current
@@ -597,9 +595,6 @@ function WidgetGrid({ widgets, rows, prevRows, layout, layoutEpoch, onLayoutChan
     return () => ro.disconnect()
   }, [])
 
-  // Preset buttons — React 18 batches onLayoutChange (parent state) and setLocalEpoch
-  // (local state) in the same event-handler flush, so GridLayout remounts with the
-  // updated layout already in props.
   const handleSizePreset = useCallback((widgetId, newW, newH) => {
     const updated = layout.map((item) => {
       if (item.i !== widgetId) return item
@@ -609,10 +604,9 @@ function WidgetGrid({ widgets, rows, prevRows, layout, layoutEpoch, onLayoutChan
       return { ...item, x, w, h }
     })
     onLayoutChange(updated)
-    setLocalEpoch((e) => e + 1)
   }, [layout, onLayoutChange])
 
-  const gridKey = `${layoutEpoch}-${localEpoch}`
+  const gridKey = `${layoutEpoch}`
 
   return (
     <div ref={containerRef} className="w-full">

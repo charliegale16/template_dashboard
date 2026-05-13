@@ -18,44 +18,44 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 14  // ← bumped: chart default h 10→6
+const LAYOUT_VERSION  = 15  // ← bumped: kpi w:3→2 h:2→1, charts default h = minH
 const MAX_SNAPSHOTS   = 10
 
 // GRID_COLS=24, ROW_HEIGHT=24px, GAP=8px  (set in DashboardPage)
 //   Formula: height = h×24 + (h-1)×8 = 32h - 8
 //
-//   KPI  S  w=3  h=2  →   56px tall × ~180px wide
-//   KPI  M  w=6  h=4  →  120px tall × ~360px wide
-//   KPI  L  w=9  h=6  →  184px tall × ~540px wide
-//   Chart   w=24 h=6  →  184px tall, full width (minimum useful height)
+//   KPI  S  w=2  h=1  →   24px tall × ~120px wide
+//   KPI  M  w=3  h=2  →   56px tall × ~180px wide
+//   KPI  L  w=5  h=3  →   88px tall × ~300px wide
+//   Chart   w=24 h=3  →   88px tall, full width (minimum useful height)
 const SIZE_CONFIG = {
   kpi: {
-    w: 3, h: 2,
+    w: 2, h: 1,
     minW: 1, maxW: 24,
     minH: 1, maxH: 30,
   },
   line_chart: {
-    w: 24, h: 6,
+    w: 24, h: 3,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   bar_chart: {
-    w: 24, h: 6,
+    w: 24, h: 3,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   comparison: {
-    w: 24, h: 6,
+    w: 24, h: 3,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   pivot_table: {
-    w: 24, h: 8,
+    w: 24, h: 4,
     minW: 8, maxW: 24,
     minH: 4, maxH: 30,
   },
   period_comparison: {
-    w: 12, h: 4,
+    w: 12, h: 2,
     minW: 6, maxW: 24,
     minH: 2, maxH: 30,
   },
