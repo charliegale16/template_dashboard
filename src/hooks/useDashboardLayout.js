@@ -1,12 +1,12 @@
 /**
  * useDashboardLayout
  *
- * GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px  (set in DashboardPage)
- *   height formula: h×31 + (h-1)×8 = 39h − 8
- *   KPI  S  w=2  h=3  →  109px tall × ~110px wide  ≈ square
- *   KPI  M  w=4  h=6  →  226px tall × ~220px wide  ≈ square
- *   KPI  L  w=6  h=9  →  343px tall × ~330px wide  ≈ square
- *   Chart   w=24 h=8  →  304px tall, full width
+ * GRID_COLS=24, ROW_HEIGHT=24px, GAP=8px  (set in DashboardPage)
+ *   height formula: h×24 + (h-1)×8 = 32h − 8
+ *   KPI  S  w=3  h=2  →   56px tall × ~180px wide
+ *   KPI  M  w=6  h=4  →  120px tall × ~360px wide
+ *   KPI  L  w=9  h=6  →  184px tall × ~540px wide
+ *   Chart   w=24 h=10 →  312px tall, full width
  *
  * LAYOUT_VERSION must be bumped whenever ROW_HEIGHT or default sizes change.
  * A version mismatch auto-resets every user's saved layout to fresh defaults.
@@ -18,34 +18,34 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 12  // ← bumped: force reset — clears stale oversized saved layouts
+const LAYOUT_VERSION  = 13  // ← bumped: ROW_HEIGHT 31→24, KPI defaults resized
 const MAX_SNAPSHOTS   = 10
 
-// GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px  (set in DashboardPage)
-//   Formula: height = h×31 + (h-1)×8 = 39h - 8
+// GRID_COLS=24, ROW_HEIGHT=24px, GAP=8px  (set in DashboardPage)
+//   Formula: height = h×24 + (h-1)×8 = 32h - 8
 //
-//   KPI  S  w=2  h=3  →  109px tall × ~110px wide  ≈ 122×122
-//   KPI  M  w=4  h=6  →  226px tall × ~220px wide  ≈ 233×233
-//   KPI  L  w=6  h=9  →  343px tall × ~330px wide  ≈ 333×333
-//   Chart   w=24 h=8  →  304px tall, full width
+//   KPI  S  w=3  h=2  →   56px tall × ~180px wide
+//   KPI  M  w=6  h=4  →  120px tall × ~360px wide
+//   KPI  L  w=9  h=6  →  184px tall × ~540px wide
+//   Chart   w=24 h=10 →  312px tall, full width
 const SIZE_CONFIG = {
   kpi: {
-    w: 2, h: 3,
+    w: 3, h: 2,
     minW: 1, maxW: 24,
     minH: 1, maxH: 30,
   },
   line_chart: {
-    w: 24, h: 8,
+    w: 24, h: 10,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   bar_chart: {
-    w: 24, h: 8,
+    w: 24, h: 10,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   comparison: {
-    w: 24, h: 8,
+    w: 24, h: 10,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },

@@ -141,21 +141,21 @@ const TOOLTIP_STYLE = {
 }
 
 // ── Grid / preset constants ───────────────────────────────────────────────────
-// GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px
-//   pixel height formula: h × 31 + (h-1) × 8 = 39h - 8
-//   S  w=2  h=3  → 109px tall  × ~120px wide   ≈ 122 × 122
-//   M  w=4  h=6  → 226px tall  × ~240px wide   ≈ 233 × 233
-//   L  w=6  h=9  → 343px tall  × ~360px wide   ≈ 333 × 333
-//   Chart h=8    → 304px tall, ½ (w=12) or full (w=24)
+// GRID_COLS=24, ROW_HEIGHT=24px, GAP=8px
+//   pixel height formula: h × 24 + (h-1) × 8 = 32h - 8
+//   S  w=3  h=2  →  56px tall  × ~180px wide
+//   M  w=6  h=4  → 120px tall  × ~360px wide
+//   L  w=9  h=6  → 184px tall  × ~540px wide
+//   Chart h=10   → 312px tall, ½ (w=12) or full (w=24)
 
-const ROW_HEIGHT = 31
+const ROW_HEIGHT = 24
 const GRID_GAP   = 8
 const GRID_COLS  = 24
 
 const KPI_PRESETS = [
-  { label: 'S', w: 2, h: 3 },
-  { label: 'M', w: 4, h: 6 },
-  { label: 'L', w: 6, h: 9 },
+  { label: 'S', w: 3, h: 2 },
+  { label: 'M', w: 6, h: 4 },
+  { label: 'L', w: 9, h: 6 },
 ]
 
 const CHART_PRESETS = [
@@ -165,10 +165,10 @@ const CHART_PRESETS = [
 
 // KPI value font scales with tile height (grid rows)
 function kpiValueClass(h) {
-  if (h >= 9)  return 'text-5xl'
   if (h >= 6)  return 'text-4xl'
-  if (h >= 3)  return 'text-2xl'
-  return 'text-xl'
+  if (h >= 4)  return 'text-2xl'
+  if (h >= 2)  return 'text-xl'
+  return 'text-base'
 }
 
 // ── Shared grip icon ──────────────────────────────────────────────────────────
@@ -215,14 +215,14 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
   }, [value, prevValue, prevRows])
 
   const isUp      = trendPct !== null && trendPct >= 0
-  const h         = layoutItem?.h ?? 3
-  const showTrend = trendPct !== null && h >= 5
+  const h         = layoutItem?.h ?? 2
+  const showTrend = trendPct !== null && h >= 4
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
+    <div className="h-full relative bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
 
-      {/* Top bar: only controls — S/M/L presets + drag grip. No title here. */}
-      <div className="flex items-center justify-end gap-1 px-2 pt-1.5 shrink-0">
+      {/* Controls: top-right corner, always on top */}
+      <div className="absolute top-0 inset-x-0 flex items-center justify-end gap-1 px-2 pt-1 z-10">
         <div className="flex items-center gap-px">
           {KPI_PRESETS.map((p) => {
             const active = layoutItem?.h === p.h
@@ -248,22 +248,28 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
         </div>
       </div>
 
-      {/* Center: value + title stacked — both the same color, title always visible */}
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-2 pb-2 gap-0.5">
-        <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums`}>
-          {formatted}
-        </p>
-        <p className="text-xs font-semibold text-gray-900 dark:text-white truncate w-full text-center leading-tight">
+      {/* Value: centered in the full card, padded away from controls and title */}
+      <div className="absolute inset-0 flex items-center justify-center pt-5 pb-5">
+        <div className="flex flex-col items-center gap-0.5">
+          <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums`}>
+            {formatted}
+          </p>
+          {showTrend && (
+            <p className={`text-xs font-medium flex items-center gap-0.5 ${
+              isUp ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
+            }`}>
+              <TrendArrow up={isUp} />
+              <span>{Math.abs(trendPct).toFixed(1)}%</span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Title: pinned to the bottom of the card */}
+      <div className="absolute bottom-0 inset-x-0 px-2 pb-1.5">
+        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate text-center leading-tight uppercase tracking-wide">
           {kpi.name}
         </p>
-        {showTrend && (
-          <p className={`text-xs font-medium flex items-center gap-0.5 mt-0.5 ${
-            isUp ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
-          }`}>
-            <TrendArrow up={isUp} />
-            <span>{Math.abs(trendPct).toFixed(1)}%</span>
-          </p>
-        )}
       </div>
 
     </div>
@@ -633,7 +639,7 @@ export default function DashboardPage() {
 
       {/* ── Header ── */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-20 no-print">
-        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+        <div className="w-full px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
 
           {/* Left: breadcrumb */}
           <div className="flex items-center gap-2 min-w-0 shrink-0">
@@ -840,7 +846,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-screen-xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <main className="w-full px-4 sm:px-6 py-8 space-y-6">
 
         {/* Load error */}
         {loadError && (
