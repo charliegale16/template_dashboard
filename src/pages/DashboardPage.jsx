@@ -275,19 +275,32 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
 }
 
 // ── Chart Widget ──────────────────────────────────────────────────────────────
-// Layout contract:
-//   - Parent (react-grid-layout item) has explicit pixel height via inline style
-//   - Card is h-full flex-col: fixed-height header (shrink-0) + chart body (flex-1 min-h-0)
-//   - Chart body uses position:relative so the absolute-inset child gets a real pixel height
-//   - The absolute-inset div creates a proper positioning context for ResponsiveContainer
-//   - ResponsiveContainer height="100%" resolves against its absolutely-positioned parent,
-//     not the flex item (flex items don't expose a CSS height property for % resolution)
+// Sizing strategy: a ResizeObserver on the chart body div measures its exact
+// pixel dimensions after every layout change, then passes them as explicit px
+// values to ResponsiveContainer. This is more reliable than height/width="100%"
+// which can silently fail when the parent is a flex item (height) or when
+// Recharts' own internal observer misses a grid-triggered resize (width).
 
 function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
   const data    = useMemo(() => getChartData(rows, widget.formula), [rows, widget.formula])
   const wt      = widget.formula?.widget_type
   const stroke1 = STROKE_COLOR[widget.color]  ?? '#3b82f6'
   const stroke2 = STROKE_COLOR_2[widget.color] ?? '#f59e0b'
+
+  // Measure the chart body so we can pass explicit px to ResponsiveContainer
+  const bodyRef  = useRef(null)
+  const [dims, setDims] = useState({ w: 0, h: 0 })
+
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      setDims({ w: Math.floor(width), h: Math.floor(height) })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const renderChart = () => {
     if (wt === 'bar_chart') {
@@ -363,23 +376,18 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
         </div>
       </div>
 
-      {/* Chart body
-          position:relative creates a containing block with a real pixel height.
-          The absolute-inset child fills it exactly, giving ResponsiveContainer
-          a reliable pixel height so height="100%" resolves correctly.
-          Without this, height="100%" inside flex-1 resolves to "auto" in CSS. */}
-      <div className="relative flex-1 min-h-0">
+      {/* Chart body — flex-1 min-h-0 with explicit padding; ResizeObserver above
+          measures this element and feeds pixel dimensions to ResponsiveContainer */}
+      <div ref={bodyRef} className="flex-1 min-h-0 px-4 pb-4 pt-1">
         {!data.length ? (
-          <p className="absolute top-2 left-4 text-xs text-gray-400 dark:text-gray-500">
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
             No data available for this chart.
           </p>
-        ) : (
-          <div style={{ position: 'absolute', inset: '2px 12px 14px 4px' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              {renderChart()}
-            </ResponsiveContainer>
-          </div>
-        )}
+        ) : dims.w > 0 && dims.h > 0 ? (
+          <ResponsiveContainer width={dims.w} height={dims.h}>
+            {renderChart()}
+          </ResponsiveContainer>
+        ) : null}
       </div>
 
     </div>
@@ -403,11 +411,14 @@ function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoa
   }, [])
 
   const handleSizePreset = useCallback((widgetId, newW, newH) => {
-    const updated = layout.map((item) =>
-      item.i === widgetId
-        ? { ...item, w: Math.min(newW, item.maxW ?? GRID_COLS), h: Math.min(newH, item.maxH ?? 30) }
-        : item
-    )
+    const updated = layout.map((item) => {
+      if (item.i !== widgetId) return item
+      const w = Math.min(newW, item.maxW ?? GRID_COLS)
+      const h = Math.min(newH, item.maxH ?? 30)
+      // Clamp x so the item never overflows the right edge after a width increase
+      const x = Math.min(item.x, GRID_COLS - w)
+      return { ...item, x, w, h }
+    })
     onLayoutChange(updated)
   }, [layout, onLayoutChange])
 
