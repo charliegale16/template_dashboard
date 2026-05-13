@@ -17,34 +17,35 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 8   // ← bumped: KPI square-ish defaults (h=8 @ ROW_HEIGHT=32)
+const LAYOUT_VERSION  = 9   // ← bumped: 24-col grid, ROW_HEIGHT=31, GAP=8 for pixel-accurate sizes
 const MAX_SNAPSHOTS   = 10
 
-// ROW_HEIGHT = 32px, GAP = 12px  (set in DashboardPage)
-//   KPI w=3 tile pixel width  ≈ 341px at 1400px container
-//   KPI S h=8  → 8×32 + 7×12 = 340px  ≈ square  (4 per row)
-//   KPI M h=10 → 10×32 + 9×12 = 428px  (3 per row at w=4)
-//   KPI L h=14 → 14×32 + 13×12 = 604px (2 per row at w=6)
-//   Chart  h=5  → 5×32 + 4×12 = 208px  (unchanged)
+// GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px  (set in DashboardPage)
+//   Formula: height = h×31 + (h-1)×8 = 39h - 8
+//
+//   KPI  S  w=2  h=3  →  109px tall × ~110px wide  ≈ 122×122
+//   KPI  M  w=4  h=6  →  226px tall × ~220px wide  ≈ 233×233
+//   KPI  L  w=6  h=9  →  343px tall × ~330px wide  ≈ 333×333
+//   Chart   w=24 h=8  →  304px tall, full width
 const SIZE_CONFIG = {
   kpi: {
-    w: 3, h: 8,
-    minW: 2, maxW: 12,
+    w: 2, h: 3,
+    minW: 1, maxW: 24,
     minH: 1, maxH: 30,
   },
   line_chart: {
-    w: 12, h: 5,
-    minW: 4, maxW: 12,
+    w: 24, h: 8,
+    minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   bar_chart: {
-    w: 12, h: 5,
-    minW: 4, maxW: 12,
+    w: 24, h: 8,
+    minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   comparison: {
-    w: 12, h: 5,
-    minW: 4, maxW: 12,
+    w: 24, h: 8,
+    minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
 }

@@ -126,29 +126,29 @@ function shortNum(v) {
 }
 
 // ── Size preset definitions ───────────────────────────────────────────────────
-// ROW_HEIGHT=32, GAP=12
-//   S h=8  → ~340px tall  (square-ish at w=3, 4 per row)
-//   M h=10 → ~428px tall  (taller, at w=4, 3 per row)
-//   L h=14 → ~604px tall  (large, at w=6, 2 per row)
+// GRID_COLS=24, ROW_HEIGHT=31, GAP=8
+//   S w=2  h=3  → 109px tall × ~110-126px wide  ≈ 122×122
+//   M w=4  h=6  → 226px tall × ~220-250px wide  ≈ 233×233
+//   L w=6  h=9  → 343px tall × ~330-376px wide  ≈ 333×333
+//   Chart h=8   → 304px tall, full or half width
 
 const KPI_PRESETS = [
-  { label: 'S', w: 3, h: 8  },
-  { label: 'M', w: 4, h: 10 },
-  { label: 'L', w: 6, h: 14 },
+  { label: 'S', w: 2, h: 3 },
+  { label: 'M', w: 4, h: 6 },
+  { label: 'L', w: 6, h: 9 },
 ]
 
 const CHART_PRESETS = [
-  { label: '½',  w: 6  },
-  { label: '■', w: 12 },
+  { label: '½',  w: 12 },
+  { label: '■', w: 24 },
 ]
 
 // Value font scales with tile height so it fills the space naturally
 function kpiValueClass(h) {
-  if (h >= 14) return 'text-5xl'
-  if (h >= 10) return 'text-4xl'
+  if (h >= 9)  return 'text-4xl'
   if (h >= 6)  return 'text-3xl'
-  if (h >= 4)  return 'text-2xl'
-  return 'text-xl'
+  if (h >= 3)  return 'text-xl'
+  return 'text-lg'
 }
 
 // Shared grip dots SVG
@@ -175,7 +175,7 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
   }, [value, prevValue, prevRows])
 
   const isUp      = trendPct !== null && trendPct >= 0
-  const h         = layoutItem?.h ?? 8
+  const h         = layoutItem?.h ?? 3
   const showTrend = h >= 5   // trend row visible once tile has enough height
 
   return (
@@ -335,9 +335,9 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
 
 // ── Unified Widget Grid (KPIs + Charts) ───────────────────────────────────────
 
-const ROW_HEIGHT = 32
-const GRID_GAP   = 12
-const GRID_COLS  = 12
+const ROW_HEIGHT = 31
+const GRID_GAP   = 8
+const GRID_COLS  = 24
 
 function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoaded }) {
   const containerRef = useRef(null)
