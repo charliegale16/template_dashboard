@@ -7,11 +7,13 @@ import {
 import { useAuth } from '../hooks/useAuth'
 import { useKPIs } from '../hooks/useKPIs'
 import { loadSource, loadRows } from '../hooks/useDataSource'
-import { computeKPI, formatKPI, getChartData, applyFilters, enrichRows, FILTER_OPERATORS, STROKE_COLOR, STROKE_COLOR_2, getExpressionColumns } from '../utils/formulaEngine'
+import { computeKPI, formatKPI, getChartData, getPivotData, applyFilters, enrichRows, FILTER_OPERATORS, STROKE_COLOR, STROKE_COLOR_2, getExpressionColumns } from '../utils/formulaEngine'
 import {
   AGGREGATIONS, AGGREGATIONS_CHART, FORMATS, COLORS,
+  CALC_AGGREGATIONS, defaultCalculatedMetric,
   validateWidget,
 } from '../features/widgets/widgetSchema'
+import { executeCalculatedMetric } from '../utils/formulaEngine'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,26 @@ const WIDGET_TYPES = [
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l3-5 3 3 4-6" />
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8l3 3 3-2 4 5" />
+      </svg>
+    ),
+  },
+  {
+    value: 'pivot_table',
+    label: 'Pivot Table',
+    description: 'Group and aggregate data',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M10 3v18M14 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
+      </svg>
+    ),
+  },
+  {
+    value: 'period_comparison',
+    label: 'Period Compare',
+    description: 'Current vs previous period',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
       </svg>
     ),
   },
@@ -135,6 +157,43 @@ function MiniBarChart({ data, color }) {
         <Bar dataKey="y" fill={fill} radius={[3, 3, 0, 0]} maxBarSize={40} />
       </BarChart>
     </ResponsiveContainer>
+  )
+}
+
+function MiniPivotTable({ formula, rows }) {
+  const groupBy    = formula?.group_by ?? []
+  const valCol     = formula?.value_column
+  const pivotRows  = useMemo(() => {
+    if (!rows.length || !groupBy.length || !valCol) return []
+    return getPivotData(rows, formula).slice(0, 5)
+  }, [rows, formula, groupBy, valCol])
+
+  if (!pivotRows.length) return <p className="text-xs text-gray-400">Select group-by and value columns to preview.</p>
+  return (
+    <div className="overflow-x-auto">
+      <table className="text-xs w-full border-collapse">
+        <thead>
+          <tr>
+            {groupBy.map((col) => (
+              <th key={col} className="text-left font-semibold text-gray-400 px-2 py-1 border-b border-gray-200 dark:border-gray-600">{col}</th>
+            ))}
+            <th className="text-right font-semibold text-gray-400 px-2 py-1 border-b border-gray-200 dark:border-gray-600">{valCol}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pivotRows.map((row, i) => (
+            <tr key={i} className="border-b border-gray-100 dark:border-gray-700">
+              {groupBy.map((col) => (
+                <td key={col} className="px-2 py-1 text-gray-700 dark:text-gray-300 truncate max-w-[120px]">{row[col]}</td>
+              ))}
+              <td className="px-2 py-1 text-right font-mono text-gray-800 dark:text-gray-200 tabular-nums">
+                {typeof row._value === 'number' ? row._value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : row._value}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -377,6 +436,184 @@ function ComputedColumnsSection({ computedCols, realHeaders, onChange }) {
   )
 }
 
+// ── Calculated metrics (COUNTIF / SUMIF / AVGIF) ──────────────────────────────
+
+const MAX_CALC_METRICS = 5
+const EMPTY_CALC_CONDITION = { column: '', operator: 'equals', value: '' }
+
+function CalculatedMetricRow({ metric, index, allHeaders, rows, onChange, onRemove }) {
+  const needsCol = metric.aggregation !== 'count'
+  const result   = useMemo(() => {
+    if (!rows.length) return null
+    const hasConditions = metric.conditions?.some((c) => c.column)
+    if (!hasConditions && needsCol && !metric.column) return null
+    return executeCalculatedMetric(rows, metric)
+  }, [rows, metric, needsCol])
+
+  return (
+    <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-900/40 rounded-lg border border-gray-100 dark:border-gray-700">
+      {/* Header row */}
+      <div className="flex items-end gap-2">
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <label className="label text-[11px]">Metric name</label>
+            <input
+              className="input text-sm"
+              value={metric.name}
+              onChange={(e) => onChange({ ...metric, name: e.target.value })}
+              placeholder={`e.g. Active Orders`}
+            />
+          </div>
+          <div>
+            <label className="label text-[11px]">Aggregation</label>
+            <select
+              className="input text-sm"
+              value={metric.aggregation}
+              onChange={(e) => onChange({ ...metric, aggregation: e.target.value, column: needsCol ? metric.column : '' })}
+            >
+              {CALC_AGGREGATIONS.map((a) => (
+                <option key={a.value} value={a.value}>{a.label}</option>
+              ))}
+            </select>
+          </div>
+          {needsCol && (
+            <div>
+              <label className="label text-[11px]">Column</label>
+              <select
+                className="input text-sm"
+                value={metric.column}
+                onChange={(e) => onChange({ ...metric, column: e.target.value })}
+              >
+                <option value="">Select column…</option>
+                {allHeaders.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+          )}
+          {!needsCol && (
+            <div className="flex items-end pb-1">
+              {result !== null && (
+                <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                  Result: {Number.isInteger(result) ? result.toLocaleString() : result.toFixed(2)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="p-2 text-gray-300 dark:text-gray-600 hover:text-red-400 transition-colors shrink-0"
+          title="Remove metric"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Conditions */}
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+          Conditions (WHERE)
+        </p>
+        {(metric.conditions ?? []).map((cond, ci) => {
+          const opDef     = FILTER_OPERATORS.find((o) => o.value === cond.operator)
+          const needsVal  = opDef?.needsValue !== false
+          return (
+            <div key={ci} className="flex items-start gap-2">
+              <span className="text-[10px] font-semibold text-gray-400 w-10 pt-2.5 shrink-0 text-right">
+                {ci === 0 ? 'WHERE' : 'AND'}
+              </span>
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <select className="input text-sm" value={cond.column}
+                  onChange={(e) => {
+                    const next = [...metric.conditions]; next[ci] = { ...cond, column: e.target.value, value: '' }
+                    onChange({ ...metric, conditions: next })
+                  }}>
+                  <option value="">Select column…</option>
+                  {allHeaders.map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
+                <select className="input text-sm" value={cond.operator} disabled={!cond.column}
+                  onChange={(e) => {
+                    const next = [...metric.conditions]; next[ci] = { ...cond, operator: e.target.value }
+                    onChange({ ...metric, conditions: next })
+                  }}>
+                  {FILTER_OPERATORS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}
+                </select>
+                {needsVal ? (
+                  <input className="input text-sm" value={cond.value}
+                    placeholder={cond.column ? 'Value…' : '—'} disabled={!cond.column}
+                    onChange={(e) => {
+                      const next = [...metric.conditions]; next[ci] = { ...cond, value: e.target.value }
+                      onChange({ ...metric, conditions: next })
+                    }} />
+                ) : (
+                  <div className="input text-sm text-gray-400 dark:text-gray-500 flex items-center">no value needed</div>
+                )}
+              </div>
+              <button type="button"
+                onClick={() => onChange({ ...metric, conditions: metric.conditions.filter((_, idx) => idx !== ci) })}
+                className="p-2 text-gray-300 dark:text-gray-600 hover:text-red-400 transition-colors shrink-0 mt-0.5"
+                title="Remove condition">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )
+        })}
+        <div className="flex items-center justify-between">
+          <button type="button"
+            onClick={() => onChange({ ...metric, conditions: [...(metric.conditions ?? []), { ...EMPTY_CALC_CONDITION }] })}
+            className="text-xs text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add condition
+          </button>
+          {result !== null && needsCol && (
+            <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+              Result: {Number.isInteger(result) ? result.toLocaleString() : result.toFixed(2)}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CalculatedMetricsSection({ metrics, allHeaders, rows, onChange }) {
+  return (
+    <div className="space-y-3">
+      {metrics.map((metric, i) => (
+        <CalculatedMetricRow
+          key={i}
+          metric={metric}
+          index={i}
+          allHeaders={allHeaders}
+          rows={rows}
+          onChange={(updated) => { const next = [...metrics]; next[i] = updated; onChange(next) }}
+          onRemove={() => onChange(metrics.filter((_, idx) => idx !== i))}
+        />
+      ))}
+      {metrics.length < MAX_CALC_METRICS ? (
+        <button
+          type="button"
+          onClick={() => onChange([...metrics, defaultCalculatedMetric()])}
+          className="text-xs text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add calculated metric
+        </button>
+      ) : (
+        <span className="text-xs text-gray-400">Max {MAX_CALC_METRICS} calculated metrics</span>
+      )}
+    </div>
+  )
+}
+
 // ── Form state helpers ─────────────────────────────────────────────────────────
 
 /**
@@ -413,28 +650,38 @@ function initFormState(initialWidget, headers) {
       // Computed columns
       computedColumns:  f.computed_columns ?? [],
       _computedOpen:    f.computed_columns?.length > 0,
+      // Calculated metrics
+      calculatedMetrics: f.calculated_metrics ?? [],
+      _calcOpen:         (f.calculated_metrics?.length ?? 0) > 0,
+      // Pivot table
+      groupBy:      f.group_by     ?? [],
+      valueColumn:  f.value_column ?? headers[0] ?? '',
     }
   }
   return {
-    widgetType:       'kpi',
-    name:             '',
-    color:            'blue',
-    format:           'number',
-    aggregation:      'sum',
-    column:           headers[0] ?? '',
-    column2:          headers[1] ?? headers[0] ?? '',
-    xColumn:          headers[0] ?? '',
-    yColumn:          headers[1] ?? headers[0] ?? '',
-    yLabel:           headers[1] ?? headers[0] ?? '',
-    y1Column:         headers[0] ?? '',
-    y2Column:         headers[1] ?? headers[0] ?? '',
-    y1Label:          'Series 1',
-    y2Label:          'Series 2',
-    chartAgg:         'sum',
-    filters:          [],
-    _filtersOpen:     false,
-    computedColumns:  [],
-    _computedOpen:    false,
+    widgetType:         'kpi',
+    name:               '',
+    color:              'blue',
+    format:             'number',
+    aggregation:        'sum',
+    column:             headers[0] ?? '',
+    column2:            headers[1] ?? headers[0] ?? '',
+    xColumn:            headers[0] ?? '',
+    yColumn:            headers[1] ?? headers[0] ?? '',
+    yLabel:             headers[1] ?? headers[0] ?? '',
+    y1Column:           headers[0] ?? '',
+    y2Column:           headers[1] ?? headers[0] ?? '',
+    y1Label:            'Series 1',
+    y2Label:            'Series 2',
+    chartAgg:           'sum',
+    filters:            [],
+    _filtersOpen:       false,
+    computedColumns:    [],
+    _computedOpen:      false,
+    calculatedMetrics:  [],
+    _calcOpen:          false,
+    groupBy:            [],
+    valueColumn:        headers[0] ?? '',
   }
 }
 
@@ -455,7 +702,8 @@ function WidgetForm({ onSave, onCancel, headers, userId, sourceId, rows, nextOrd
 
   const { widgetType, name, color, format, aggregation, column, column2,
           xColumn, yColumn, yLabel, y1Column, y2Column, y1Label, y2Label,
-          chartAgg, filters, computedColumns } = form
+          chartAgg, filters, computedColumns, calculatedMetrics,
+          groupBy, valueColumn } = form
 
   const needsTwoCols = aggregation === 'ratio' || aggregation === 'percent'
   const needsOneCol  = aggregation !== 'count'
@@ -476,13 +724,17 @@ function WidgetForm({ onSave, onCancel, headers, userId, sourceId, rows, nextOrd
   const formula = useMemo(() => {
     const computed = computedColumns.filter((c) => c.name?.trim() && c.expression?.trim())
     if (widgetType === 'kpi') {
+      const calcMetrics = calculatedMetrics.filter(
+        (m) => m.name?.trim() && m.aggregation && (m.aggregation === 'count' || m.column)
+      )
       return {
-        widget_type:      'kpi',
+        widget_type:         'kpi',
         aggregation,
-        column:           needsOneCol  ? column  : null,
-        column2:          needsTwoCols ? column2 : null,
+        column:              needsOneCol  ? column  : null,
+        column2:             needsTwoCols ? column2 : null,
         filters,
-        computed_columns: computed,
+        computed_columns:    computed,
+        calculated_metrics:  calcMetrics,
       }
     }
     if (widgetType === 'comparison') {
@@ -491,6 +743,25 @@ function WidgetForm({ onSave, onCancel, headers, userId, sourceId, rows, nextOrd
         x_column: xColumn, y1_column: y1Column, y2_column: y2Column,
         y1_label: y1Label, y2_label: y2Label,
         aggregation: chartAgg, filters,
+        computed_columns: computed,
+      }
+    }
+    if (widgetType === 'pivot_table') {
+      return {
+        widget_type:      'pivot_table',
+        group_by:         groupBy.filter(Boolean),
+        value_column:     valueColumn,
+        aggregation:      chartAgg,
+        filters,
+        computed_columns: computed,
+      }
+    }
+    if (widgetType === 'period_comparison') {
+      return {
+        widget_type:      'period_comparison',
+        aggregation,
+        column:           needsOneCol ? column : null,
+        filters,
         computed_columns: computed,
       }
     }
@@ -503,7 +774,8 @@ function WidgetForm({ onSave, onCancel, headers, userId, sourceId, rows, nextOrd
     }
   }, [widgetType, aggregation, column, column2, needsOneCol, needsTwoCols,
       xColumn, yColumn, yLabel, y1Column, y2Column, y1Label, y2Label,
-      chartAgg, filters, computedColumns])
+      chartAgg, filters, computedColumns, calculatedMetrics,
+      groupBy, valueColumn])
 
   const kpiPreview = useMemo(() => {
     if (widgetType !== 'kpi' || !rows.length) return null
@@ -688,6 +960,94 @@ function WidgetForm({ onSave, onCancel, headers, userId, sourceId, rows, nextOrd
         </div>
       )}
 
+      {/* ── Pivot table fields ── */}
+      {widgetType === 'pivot_table' && (
+        <div className="space-y-4">
+          <div>
+            <label className="label">Group by columns <span className="font-normal text-gray-400">(up to 3)</span></label>
+            <div className="space-y-2 mt-1">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 w-16 shrink-0">{i === 0 ? 'Group by' : `Then by`}</span>
+                  <select
+                    className="input text-sm flex-1"
+                    value={groupBy[i] ?? ''}
+                    onChange={(e) => {
+                      const next = [...groupBy]
+                      if (e.target.value) next[i] = e.target.value
+                      else next.splice(i)
+                      set('groupBy', next.filter(Boolean))
+                    }}
+                  >
+                    <option value="">{i === 0 ? 'Select column…' : '(none)'}</option>
+                    {allHeaders.filter((h) => !groupBy.includes(h) || groupBy[i] === h).map((h) => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="label">Value column</label>
+              <select className="input text-sm" value={valueColumn} onChange={(e) => set('valueColumn', e.target.value)}>
+                {allHeaders.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Aggregation</label>
+              <select className="input text-sm" value={chartAgg} onChange={(e) => set('chartAgg', e.target.value)}>
+                {[
+                  { value: 'sum', label: 'Sum' }, { value: 'avg', label: 'Average' },
+                  { value: 'count', label: 'Count rows' }, { value: 'min', label: 'Min' }, { value: 'max', label: 'Max' },
+                ].map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Format</label>
+              <select className="input text-sm" value={format} onChange={(e) => set('format', e.target.value)}>
+                {[{ value: 'number', label: 'Number' }, { value: 'currency', label: 'Currency ($)' }, { value: 'percent', label: 'Percent (%)' }]
+                  .map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Period comparison fields ── */}
+      {widgetType === 'period_comparison' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Aggregation</label>
+            <select className="input" value={aggregation} onChange={(e) => set('aggregation', e.target.value)}>
+              {[
+                { value: 'sum', label: 'Sum' }, { value: 'avg', label: 'Average' },
+                { value: 'count', label: 'Count rows' }, { value: 'min', label: 'Min' }, { value: 'max', label: 'Max' },
+              ].map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Format</label>
+            <select className="input" value={format} onChange={(e) => set('format', e.target.value)}>
+              {[{ value: 'number', label: 'Number' }, { value: 'currency', label: 'Currency ($)' }, { value: 'percent', label: 'Percent (%)' }]
+                .map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </select>
+          </div>
+          {needsOneCol && (
+            <div>
+              <label className="label">Column</label>
+              <select className="input" value={column} onChange={(e) => set('column', e.target.value)}>
+                {allHeaders.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="sm:col-span-2 text-xs text-gray-400 bg-gray-50 dark:bg-gray-900/40 rounded-lg px-3 py-2">
+            Comparison uses the dashboard date filter to compute the previous period automatically.
+          </div>
+        </div>
+      )}
+
       {/* ── Computed columns ── */}
       <div>
         <button
@@ -716,6 +1076,38 @@ function WidgetForm({ onSave, onCancel, headers, userId, sourceId, rows, nextOrd
           </div>
         )}
       </div>
+
+      {/* ── Calculated metrics (KPI only) ── */}
+      {widgetType === 'kpi' && (
+        <div>
+          <button
+            type="button"
+            onClick={() => set('_calcOpen', !form._calcOpen)}
+            className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            <svg className={`w-3.5 h-3.5 transition-transform ${form._calcOpen ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            Calculated metrics
+            {calculatedMetrics.filter((m) => m.name?.trim()).length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 text-[10px] font-bold">
+                {calculatedMetrics.filter((m) => m.name?.trim()).length}
+              </span>
+            )}
+            <span className="font-normal text-gray-400">COUNTIF / SUMIF / AVGIF style</span>
+          </button>
+          {form._calcOpen && (
+            <div className="mt-3 pl-5 border-l-2 border-gray-100 dark:border-gray-700">
+              <CalculatedMetricsSection
+                metrics={calculatedMetrics}
+                allHeaders={allHeaders}
+                rows={enrichRows(rows, computedColumns.filter((c) => c.name?.trim() && c.expression?.trim()))}
+                onChange={(updated) => set('calculatedMetrics', updated)}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Filters ── */}
       <div>
@@ -764,6 +1156,23 @@ function WidgetForm({ onSave, onCancel, headers, userId, sourceId, rows, nextOrd
           <MiniLineChart data={chartPreviewData} color={color}
             y1Label={y1Label} y2Label={y2Label} isComparison />
         )}
+        {widgetType === 'pivot_table' && <MiniPivotTable formula={formula} rows={rows} />}
+        {widgetType === 'period_comparison' && kpiPreview !== null && (
+          <div className="flex items-center justify-center gap-6">
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-3xl font-bold" style={{ color: STROKE_COLOR[color] }}>{kpiPreview}</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Current</p>
+            </div>
+            <div className="text-2xl text-gray-200">→</div>
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-3xl font-bold text-gray-300 dark:text-gray-600">—</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Previous</p>
+            </div>
+          </div>
+        )}
+        {widgetType === 'period_comparison' && kpiPreview === null && (
+          <p className="text-xs text-gray-400">Select a column to see a preview.</p>
+        )}
       </div>
 
       {/* Validation errors */}
@@ -806,11 +1215,14 @@ function WidgetRow({ widget, onDelete, onEdit, index }) {
         <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{widget.name}</p>
         <p className="text-xs text-gray-400 truncate">
           {wtDef?.label}
-          {wt === 'kpi'        && widget.formula?.column    && ` · ${widget.formula.column}`}
-          {wt === 'comparison' && ` · ${widget.formula?.y1_column ?? ''} vs ${widget.formula?.y2_column ?? ''}`}
+          {wt === 'kpi'               && widget.formula?.column    && ` · ${widget.formula.column}`}
+          {wt === 'period_comparison' && widget.formula?.column    && ` · ${widget.formula.column}`}
+          {wt === 'comparison'        && ` · ${widget.formula?.y1_column ?? ''} vs ${widget.formula?.y2_column ?? ''}`}
           {(wt === 'line_chart' || wt === 'bar_chart') && widget.formula?.x_column
             && ` · ${widget.formula.x_column} × ${widget.formula.y_column}`}
-          {wt === 'kpi' && ` · ${widget.format}`}
+          {wt === 'pivot_table' && widget.formula?.group_by?.length
+            && ` · ${widget.formula.group_by.join(' → ')} → ${widget.formula.value_column ?? ''}`}
+          {(wt === 'kpi' || wt === 'period_comparison') && ` · ${widget.format}`}
         </p>
       </div>
       <div className={`w-3 h-3 rounded-full shrink-0 ${COLOR_DOT[widget.color] ?? 'bg-blue-500'}`} />

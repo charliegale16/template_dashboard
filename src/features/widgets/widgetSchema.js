@@ -13,6 +13,32 @@
  * Data flow: Dataset → formula (validated here) → formulaEngine → Visualization
  */
 
+// ── WidgetQuery model ──────────────────────────────────────────────────────────
+// Follows Architecture.md pipeline:
+//   Dataset → Computed Columns → Widget Filters → Grouping → Aggregation
+//             → Calculated Metrics → Output
+//
+// WidgetQuery = {
+//   datasetId:          string,
+//   datasetVersionId?:  string,
+//   filters:            FilterCondition[],
+//   computed_columns:   { name, expression }[],
+//   groupBy?:           string[],
+//   metric:             MetricDefinition,
+//   calculated_metrics: CalculatedMetric[],
+// }
+//
+// MetricDefinition = { type: 'count'|'sum'|'avg'|'min'|'max'|..., column? }
+//
+// CalculatedMetric = {
+//   name:        string,
+//   aggregation: 'count'|'sum'|'avg'|'min'|'max',
+//   column?:     string,
+//   conditions:  FilterCondition[],  — applied after base widget filters
+// }
+//
+// FilterCondition = { column, operator, value }
+
 // ── Aggregation options ────────────────────────────────────────────────────────
 
 export const AGGREGATIONS = [
@@ -33,6 +59,24 @@ export const AGGREGATIONS = [
 export const AGGREGATIONS_CHART = AGGREGATIONS.filter(
   (a) => !['ratio', 'percent'].includes(a.value)
 )
+
+/**
+ * Aggregations valid for calculated metrics (COUNTIF / SUMIF / AVGIF style).
+ * A calculated metric always produces a single scalar from a conditional subset.
+ */
+export const CALC_AGGREGATIONS = [
+  { value: 'count',          label: 'Count (COUNTIF)'    },
+  { value: 'sum',            label: 'Sum (SUMIF)'         },
+  { value: 'avg',            label: 'Average (AVGIF)'     },
+  { value: 'min',            label: 'Min'                 },
+  { value: 'max',            label: 'Max'                 },
+  { value: 'count_distinct', label: 'Count distinct'      },
+]
+
+/** Factory: empty CalculatedMetric with required shape */
+export function defaultCalculatedMetric() {
+  return { name: '', aggregation: 'count', column: '', conditions: [] }
+}
 
 // ── Format options ─────────────────────────────────────────────────────────────
 
@@ -63,14 +107,15 @@ export const WIDGET_TYPE_SCHEMA = {
     label:           'KPI Card',
     description:     'Single aggregated metric',
     supportsFilters: true,
-    formulaFields:   ['aggregation', 'column', 'column2', 'filters', 'computed_columns'],
+    formulaFields:   ['aggregation', 'column', 'column2', 'filters', 'computed_columns', 'calculated_metrics'],
     aggregations:    AGGREGATIONS,
     defaults: {
-      aggregation:      'sum',
-      column:           null,
-      column2:          null,
-      filters:          [],
-      computed_columns: [],
+      aggregation:         'sum',
+      column:              null,
+      column2:             null,
+      filters:             [],
+      computed_columns:    [],
+      calculated_metrics:  [],
     },
     validate(formula, headers = []) {
       const errors = []
@@ -166,6 +211,51 @@ export const WIDGET_TYPE_SCHEMA = {
         errors.push(`Column "${formula.y1_column}" not found in dataset.`)
       if (formula.y2_column && headers.length && !headers.includes(formula.y2_column))
         errors.push(`Column "${formula.y2_column}" not found in dataset.`)
+      return errors
+    },
+  },
+
+  pivot_table: {
+    label:           'Pivot Table',
+    description:     'Group and aggregate data',
+    supportsFilters: true,
+    formulaFields:   ['group_by', 'value_column', 'aggregation', 'filters', 'computed_columns'],
+    aggregations:    AGGREGATIONS_CHART,
+    defaults: {
+      group_by:         [],
+      value_column:     null,
+      aggregation:      'sum',
+      filters:          [],
+      computed_columns: [],
+    },
+    validate(formula, headers = []) {
+      const errors = []
+      if (!formula.group_by?.length) errors.push('At least one group-by column is required.')
+      if (!formula.value_column) errors.push('Value column is required.')
+      if (formula.value_column && headers.length && !headers.includes(formula.value_column))
+        errors.push(`Column "${formula.value_column}" not found in dataset.`)
+      return errors
+    },
+  },
+
+  period_comparison: {
+    label:           'Period Compare',
+    description:     'Current vs previous period',
+    supportsFilters: true,
+    formulaFields:   ['aggregation', 'column', 'filters', 'computed_columns'],
+    aggregations:    AGGREGATIONS,
+    defaults: {
+      aggregation:      'sum',
+      column:           null,
+      filters:          [],
+      computed_columns: [],
+    },
+    validate(formula, headers = []) {
+      const errors = []
+      if (!formula.aggregation) errors.push('Aggregation is required.')
+      if (formula.aggregation !== 'count' && !formula.column) errors.push('Column is required.')
+      if (formula.column && headers.length && !headers.includes(formula.column))
+        errors.push(`Column "${formula.column}" not found in dataset.`)
       return errors
     },
   },

@@ -18,7 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 13  // ← bumped: ROW_HEIGHT 31→24, KPI defaults resized
+const LAYOUT_VERSION  = 14  // ← bumped: chart default h 10→6
 const MAX_SNAPSHOTS   = 10
 
 // GRID_COLS=24, ROW_HEIGHT=24px, GAP=8px  (set in DashboardPage)
@@ -27,7 +27,7 @@ const MAX_SNAPSHOTS   = 10
 //   KPI  S  w=3  h=2  →   56px tall × ~180px wide
 //   KPI  M  w=6  h=4  →  120px tall × ~360px wide
 //   KPI  L  w=9  h=6  →  184px tall × ~540px wide
-//   Chart   w=24 h=10 →  312px tall, full width
+//   Chart   w=24 h=6  →  184px tall, full width (minimum useful height)
 const SIZE_CONFIG = {
   kpi: {
     w: 3, h: 2,
@@ -35,19 +35,29 @@ const SIZE_CONFIG = {
     minH: 1, maxH: 30,
   },
   line_chart: {
-    w: 24, h: 10,
+    w: 24, h: 6,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   bar_chart: {
-    w: 24, h: 10,
+    w: 24, h: 6,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
   },
   comparison: {
-    w: 24, h: 10,
+    w: 24, h: 6,
     minW: 6, maxW: 24,
     minH: 3, maxH: 30,
+  },
+  pivot_table: {
+    w: 24, h: 8,
+    minW: 8, maxW: 24,
+    minH: 4, maxH: 30,
+  },
+  period_comparison: {
+    w: 12, h: 4,
+    minW: 6, maxW: 24,
+    minH: 2, maxH: 30,
   },
 }
 

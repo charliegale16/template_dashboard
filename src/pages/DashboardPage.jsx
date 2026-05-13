@@ -11,8 +11,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useKPIs } from '../hooks/useKPIs'
 import { loadSource, loadRows } from '../hooks/useDataSource'
 import {
-  computeKPI, formatKPI, getChartData,
-  applyFilters, FILTER_OPERATORS,
+  computeKPI, formatKPI, getChartData, getPivotData,
+  applyFilters, enrichRows, executeCalculatedMetric, FILTER_OPERATORS,
   STROKE_COLOR, STROKE_COLOR_2,
 } from '../utils/formulaEngine'
 import { exportCSV } from '../utils/exportUtils'
@@ -165,10 +165,10 @@ const CHART_PRESETS = [
 
 // KPI value font scales with tile height (grid rows)
 function kpiValueClass(h) {
-  if (h >= 6)  return 'text-4xl'
-  if (h >= 4)  return 'text-2xl'
-  if (h >= 2)  return 'text-xl'
-  return 'text-base'
+  if (h >= 6)  return 'text-5xl'
+  if (h >= 4)  return 'text-4xl'
+  if (h >= 2)  return 'text-3xl'
+  return 'text-2xl'
 }
 
 // ── Shared grip icon ──────────────────────────────────────────────────────────
@@ -198,15 +198,31 @@ function TrendArrow({ up }) {
 }
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
-// Layout contract:
-//   - Parent (react-grid-layout item) has explicit pixel height via inline style
-//   - This card fills it with h-full flex-col
-//   - NO overflow-hidden — it would clip the react-resizable drag handle
-//   - flex-1 min-h-0 on the value section prevents flex children from overflowing
+
+// Accent bar color mapped to the widget's color property
+const KPI_ACCENT_BG = {
+  blue:    'bg-blue-500',
+  emerald: 'bg-emerald-500',
+  amber:   'bg-amber-400',
+  red:     'bg-red-500',
+  purple:  'bg-violet-500',
+  gray:    'bg-gray-400',
+}
+
+function resolveKPIValue(rows, formula) {
+  const calcMetrics = formula?.calculated_metrics
+  if (calcMetrics?.length) {
+    const first = calcMetrics[0]
+    const enriched    = enrichRows(rows, formula.computed_columns)
+    const baseFiltered = applyFilters(enriched, formula.filters ?? [])
+    return executeCalculatedMetric(baseFiltered, first)
+  }
+  return computeKPI(rows, formula)
+}
 
 function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
-  const value     = useMemo(() => computeKPI(rows, kpi.formula),     [rows, kpi.formula])
-  const prevValue = useMemo(() => computeKPI(prevRows, kpi.formula), [prevRows, kpi.formula])
+  const value     = useMemo(() => resolveKPIValue(rows, kpi.formula),     [rows, kpi.formula])
+  const prevValue = useMemo(() => resolveKPIValue(prevRows, kpi.formula), [prevRows, kpi.formula])
   const formatted = formatKPI(value, kpi.format)
 
   const trendPct = useMemo(() => {
@@ -217,61 +233,69 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
   const isUp      = trendPct !== null && trendPct >= 0
   const h         = layoutItem?.h ?? 2
   const showTrend = trendPct !== null && h >= 4
+  const accentBg  = KPI_ACCENT_BG[kpi.color] ?? 'bg-blue-500'
 
   return (
-    <div className="h-full relative bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
+    <div className="h-full relative group bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.07] transition-shadow hover:shadow-md">
 
-      {/* Controls: top-right corner, always on top */}
-      <div className="absolute top-0 inset-x-0 flex items-center justify-end gap-1 px-2 pt-1 z-10">
-        <div className="flex items-center gap-px">
-          {KPI_PRESETS.map((p) => {
-            const active = layoutItem?.h === p.h
-            return (
-              <button
-                key={p.label}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => onSizePreset?.(kpi.id, p.w, p.h)}
-                className={`text-[9px] font-bold w-4 h-4 rounded flex items-center justify-center transition-colors leading-none ${
-                  active
-                    ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                    : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-500 dark:hover:text-gray-400'
-                }`}
-                title={p.label === 'S' ? 'Small' : p.label === 'M' ? 'Medium' : 'Large'}
-              >
-                {p.label}
-              </button>
-            )
-          })}
-        </div>
-        <div className="drag-handle cursor-grab active:cursor-grabbing flex items-center">
+      {/* 3px colored top accent */}
+      <div className={`absolute top-0 inset-x-0 h-[3px] rounded-t-xl ${accentBg}`} />
+
+      {/* Controls: fade in on hover */}
+      <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        {KPI_PRESETS.map((p) => {
+          const active = layoutItem?.h === p.h
+          return (
+            <button
+              key={p.label}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => onSizePreset?.(kpi.id, p.w, p.h)}
+              className={`text-[9px] font-bold w-4 h-4 rounded flex items-center justify-center transition-colors leading-none ${
+                active
+                  ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400'
+                  : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-500 dark:hover:text-gray-400'
+              }`}
+              title={p.label === 'S' ? 'Small' : p.label === 'M' ? 'Medium' : 'Large'}
+            >
+              {p.label}
+            </button>
+          )
+        })}
+        <div className="drag-handle cursor-grab active:cursor-grabbing ml-0.5 flex items-center">
           <GripDots />
         </div>
       </div>
 
-      {/* Value: centered in the full card, padded away from controls and title */}
-      <div className="absolute inset-0 flex items-center justify-center pt-5 pb-5">
-        <div className="flex flex-col items-center gap-0.5">
-          <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums`}>
-            {formatted}
-          </p>
+      {/* Card body: flex column, spaced top–middle–bottom */}
+      <div className="absolute inset-0 flex flex-col pt-5 pb-3 px-4">
+
+        {/* Trend badge — top-left, only when tall enough */}
+        <div className="h-5 flex items-center">
           {showTrend && (
-            <p className={`text-xs font-medium flex items-center gap-0.5 ${
-              isUp ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
+            <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+              isUp
+                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                : 'bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400'
             }`}>
               <TrendArrow up={isUp} />
-              <span>{Math.abs(trendPct).toFixed(1)}%</span>
-            </p>
+              {Math.abs(trendPct).toFixed(1)}%
+            </span>
           )}
         </div>
-      </div>
 
-      {/* Title: pinned to the bottom of the card */}
-      <div className="absolute bottom-0 inset-x-0 px-2 pb-1.5">
-        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate text-center leading-tight uppercase tracking-wide">
+        {/* Value — dominant center */}
+        <div className="flex-1 flex items-center justify-center">
+          <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums tracking-tight`}>
+            {formatted}
+          </p>
+        </div>
+
+        {/* Label — small caps pinned to bottom */}
+        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate uppercase tracking-widest text-center leading-none">
           {kpi.name}
         </p>
-      </div>
 
+      </div>
     </div>
   )
 }
@@ -396,65 +420,234 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
   )
 }
 
+// ── Pivot Table Widget ────────────────────────────────────────────────────────
+
+function PivotTableWidget({ widget, rows, layoutItem, onSizePreset }) {
+  const data    = useMemo(() => getPivotData(rows, widget.formula), [rows, widget.formula])
+  const groupBy = widget.formula?.group_by ?? []
+  const [sortCol, setSortCol] = useState('_value')
+  const [sortDir, setSortDir] = useState('desc')
+
+  const sorted = useMemo(() => {
+    return [...data].sort((a, b) => {
+      const av = sortCol === '_value' ? a._value : String(a[sortCol] ?? '')
+      const bv = sortCol === '_value' ? b._value : String(b[sortCol] ?? '')
+      if (typeof av === 'number') return sortDir === 'desc' ? bv - av : av - bv
+      return sortDir === 'desc' ? bv.localeCompare(av) : av.localeCompare(bv)
+    })
+  }, [data, sortCol, sortDir])
+
+  const total = useMemo(() => data.reduce((s, r) => s + r._value, 0), [data])
+
+  function toggleSort(col) {
+    if (sortCol === col) setSortDir((d) => d === 'desc' ? 'asc' : 'desc')
+    else { setSortCol(col); setSortDir('desc') }
+  }
+
+  const SortIcon = ({ col }) => (
+    <span className={`ml-1 text-[9px] ${sortCol === col ? 'text-indigo-500' : 'text-gray-300'}`}>
+      {sortCol === col ? (sortDir === 'desc' ? '▼' : '▲') : '⇅'}
+    </span>
+  )
+
+  return (
+    <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
+      <div className="flex items-center shrink-0 px-4 pt-3 pb-2 gap-2">
+        <div className="drag-handle flex items-center gap-2 flex-1 min-w-0 cursor-grab active:cursor-grabbing">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{widget.name}</p>
+          <GripDots />
+        </div>
+        <span className="text-xs text-gray-400">{data.length} groups</span>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-auto px-2 pb-3">
+        {!data.length ? (
+          <p className="text-xs text-gray-400 dark:text-gray-500 px-2 mt-1">No data available.</p>
+        ) : (
+          <table className="w-full text-xs border-collapse">
+            <thead className="sticky top-0 bg-white dark:bg-gray-800 z-10">
+              <tr>
+                {groupBy.map((col) => (
+                  <th key={col}
+                    onClick={() => toggleSort(col)}
+                    className="text-left font-semibold text-gray-500 dark:text-gray-400 px-2 py-1.5 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap"
+                  >
+                    {col}<SortIcon col={col} />
+                  </th>
+                ))}
+                <th
+                  onClick={() => toggleSort('_value')}
+                  className="text-right font-semibold text-gray-500 dark:text-gray-400 px-2 py-1.5 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap"
+                >
+                  {widget.formula?.value_column ?? 'Value'}<SortIcon col="_value" />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((row, i) => (
+                <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+                  {groupBy.map((col) => (
+                    <td key={col} className="px-2 py-1.5 text-gray-700 dark:text-gray-300 border-b border-gray-50 dark:border-gray-700/50 truncate max-w-[200px]">
+                      {row[col]}
+                    </td>
+                  ))}
+                  <td className="px-2 py-1.5 text-right font-mono text-gray-800 dark:text-gray-200 border-b border-gray-50 dark:border-gray-700/50 tabular-nums">
+                    {formatKPI(row._value, widget.format)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 dark:bg-gray-700/30 font-semibold">
+                <td colSpan={groupBy.length} className="px-2 py-1.5 text-gray-500 dark:text-gray-400">Total</td>
+                <td className="px-2 py-1.5 text-right font-mono text-gray-800 dark:text-gray-200 tabular-nums">
+                  {formatKPI(total, widget.format)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Period Comparison Widget ──────────────────────────────────────────────────
+
+function PeriodComparisonWidget({ widget, rows, prevRows, layoutItem, onSizePreset }) {
+  const current  = useMemo(() => resolveKPIValue(rows,     widget.formula), [rows,     widget.formula])
+  const previous = useMemo(() => resolveKPIValue(prevRows, widget.formula), [prevRows, widget.formula])
+  const formatted     = formatKPI(current,  widget.format)
+  const formattedPrev = formatKPI(previous, widget.format)
+
+  const delta    = current - previous
+  const deltaPct = previous !== 0 ? (delta / Math.abs(previous)) * 100 : null
+  const isUp     = delta >= 0
+  const accentBg = KPI_ACCENT_BG[widget.color] ?? 'bg-blue-500'
+  const h        = layoutItem?.h ?? 4
+
+  return (
+    <div className="h-full relative group bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.07] transition-shadow hover:shadow-md">
+      <div className={`absolute top-0 inset-x-0 h-[3px] rounded-t-xl ${accentBg}`} />
+
+      <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <div className="drag-handle cursor-grab active:cursor-grabbing flex items-center">
+          <GripDots />
+        </div>
+      </div>
+
+      <div className="absolute inset-0 flex flex-col pt-5 pb-3 px-4">
+        <div className="flex-1 flex items-center justify-around gap-2">
+
+          {/* Current period */}
+          <div className="flex flex-col items-center gap-1">
+            <p className={`${h >= 4 ? 'text-3xl' : 'text-2xl'} font-bold text-gray-900 dark:text-white leading-none tabular-nums tracking-tight`}>
+              {formatted}
+            </p>
+            <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">Current</p>
+          </div>
+
+          {/* Divider + delta */}
+          <div className="flex flex-col items-center gap-1 shrink-0">
+            <div className={`text-sm font-bold ${isUp ? 'text-emerald-500' : 'text-red-500'} flex items-center gap-0.5`}>
+              <TrendArrow up={isUp} />
+              {deltaPct !== null ? `${Math.abs(deltaPct).toFixed(1)}%` : '—'}
+            </div>
+            {h >= 4 && (
+              <p className="text-[9px] text-gray-400 tabular-nums">
+                {delta >= 0 ? '+' : ''}{formatKPI(delta, widget.format)}
+              </p>
+            )}
+          </div>
+
+          {/* Previous period */}
+          <div className="flex flex-col items-center gap-1">
+            <p className={`${h >= 4 ? 'text-3xl' : 'text-2xl'} font-bold text-gray-400 dark:text-gray-500 leading-none tabular-nums tracking-tight`}>
+              {prevRows?.length ? formattedPrev : '—'}
+            </p>
+            <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">Previous</p>
+          </div>
+
+        </div>
+
+        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate uppercase tracking-widest text-center leading-none">
+          {widget.name}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ── Widget Grid ───────────────────────────────────────────────────────────────
 // ResizeObserver measures the true container width so GridLayout renders
 // correctly at any viewport without needing a responsive breakpoint config.
 
 function WidgetGrid({ widgets, rows, prevRows, layout, layoutEpoch, onLayoutChange, layoutLoaded }) {
-  const containerRef = useRef(null)
-  const [width, setWidth] = useState(900)
+  const containerRef            = useRef(null)
+  const [width, setWidth]       = useState(0)
+  const [localEpoch, setLocalEpoch] = useState(0)
 
+  // Measure synchronously on mount so GridLayout gets the real width on its first render
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
+    setWidth(el.getBoundingClientRect().width)
     const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
+  // Preset buttons — React 18 batches onLayoutChange (parent state) and setLocalEpoch
+  // (local state) in the same event-handler flush, so GridLayout remounts with the
+  // updated layout already in props.
   const handleSizePreset = useCallback((widgetId, newW, newH) => {
     const updated = layout.map((item) => {
       if (item.i !== widgetId) return item
       const w = Math.min(newW, item.maxW ?? GRID_COLS)
       const h = Math.min(newH, item.maxH ?? 30)
-      // Clamp x so the item never overflows the right edge after a width increase
       const x = Math.min(item.x, GRID_COLS - w)
       return { ...item, x, w, h }
     })
     onLayoutChange(updated)
+    setLocalEpoch((e) => e + 1)
   }, [layout, onLayoutChange])
 
-  if (!layoutLoaded) return null
+  const gridKey = `${layoutEpoch}-${localEpoch}`
 
   return (
     <div ref={containerRef} className="w-full">
-      <GridLayout
-        key={layoutEpoch}
-        layout={layout}
-        cols={GRID_COLS}
-        rowHeight={ROW_HEIGHT}
-        width={width}
-        margin={[GRID_GAP, GRID_GAP]}
-        containerPadding={[0, 0]}
-        draggableHandle=".drag-handle"
-        onLayoutChange={onLayoutChange}
-        isResizable
-        isDraggable
-      >
-        {widgets.map((w) => {
-          const wt      = w.formula?.widget_type
-          const isKPI   = !wt || wt === 'kpi'
-          const item    = layout.find((l) => l.i === w.id)
-          return (
-            <div key={w.id} className="h-full">
-              {isKPI
-                ? <KPICard    kpi={w}    rows={rows} prevRows={prevRows} layoutItem={item} onSizePreset={handleSizePreset} />
-                : <ChartWidget widget={w} rows={rows}                     layoutItem={item} onSizePreset={handleSizePreset} />
-              }
-            </div>
-          )
-        })}
-      </GridLayout>
+      {layoutLoaded && width > 0 && (
+        <GridLayout
+          key={gridKey}
+          layout={layout}
+          cols={GRID_COLS}
+          rowHeight={ROW_HEIGHT}
+          width={width}
+          margin={[GRID_GAP, GRID_GAP]}
+          containerPadding={[0, 0]}
+          draggableHandle=".drag-handle"
+          onLayoutChange={onLayoutChange}
+          isResizable
+          isDraggable
+        >
+          {widgets.map((w) => {
+            const wt   = w.formula?.widget_type
+            const item = layout.find((l) => l.i === w.id)
+            return (
+              <div key={w.id} className="h-full">
+                {(!wt || wt === 'kpi')
+                  ? <KPICard kpi={w} rows={rows} prevRows={prevRows} layoutItem={item} onSizePreset={handleSizePreset} />
+                  : wt === 'pivot_table'
+                  ? <PivotTableWidget widget={w} rows={rows} layoutItem={item} onSizePreset={handleSizePreset} />
+                  : wt === 'period_comparison'
+                  ? <PeriodComparisonWidget widget={w} rows={rows} prevRows={prevRows} layoutItem={item} onSizePreset={handleSizePreset} />
+                  : <ChartWidget widget={w} rows={rows} layoutItem={item} onSizePreset={handleSizePreset} />
+                }
+              </div>
+            )
+          })}
+        </GridLayout>
+      )}
     </div>
   )
 }

@@ -77,7 +77,7 @@ function SourceCard({ source, onDelete, onDuplicate, onRename }) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-5 flex flex-col justify-between gap-3 hover:shadow-md transition-shadow">
 
       {/* ── Header row ── */}
       <div className="flex items-start justify-between gap-2">
@@ -96,7 +96,7 @@ function SourceCard({ source, onDelete, onDuplicate, onRename }) {
           </div>
 
           {/* Name + meta */}
-          <div className="min-w-0">
+          <div className="min-w-0 min-h-[48px]">
             {/* Inline rename input */}
             {editing ? (
               <div className="flex items-center gap-1">
@@ -198,15 +198,15 @@ function SourceCard({ source, onDelete, onDuplicate, onRename }) {
         <button onClick={() => navigate(`/source/${source.id}`)} className="flex-1 btn-primary py-1.5 text-xs">
           Dashboard →
         </button>
-        <button onClick={() => navigate(`/source/${source.id}/kpis`)} className="btn-secondary py-1.5 text-xs px-3">
+        <button onClick={() => navigate(`/source/${source.id}/kpis`)} className="flex-1 btn-secondary py-1.5 text-xs">
           Widgets
         </button>
 
         {/* Options dropdown (replaces bare re-upload icon) */}
-        <div className="relative" ref={optionsRef}>
+        <div className="relative flex-1" ref={optionsRef}>
           <button
             onClick={() => setOptionsOpen((o) => !o)}
-            className="btn-secondary py-1.5 text-xs px-3 flex items-center gap-1"
+            className="w-full btn-secondary py-1.5 text-xs gap-1"
           >
             Options
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">

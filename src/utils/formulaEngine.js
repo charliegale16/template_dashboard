@@ -334,6 +334,91 @@ export function getChartData(rows, formula) {
   })
 }
 
+// ── Grouping engine ───────────────────────────────────────────────────────────
+
+/**
+ * Group rows by one or more columns.
+ * Returns a Map keyed by composite string, each value being the matching rows.
+ *
+ * @param {object[]} rows          — enriched row array
+ * @param {string[]} groupByColumns — column names to group on
+ * @returns {Map<string, object[]>}
+ */
+export function groupRows(rows, groupByColumns) {
+  const result = new Map()
+  if (!groupByColumns?.length) {
+    result.set('__all__', rows)
+    return result
+  }
+  for (const row of rows) {
+    const key = groupByColumns.map((col) => String(row.data?.[col] ?? '')).join('\x00')
+    if (!result.has(key)) result.set(key, [])
+    result.get(key).push(row)
+  }
+  return result
+}
+
+// ── Calculated metrics (COUNTIF / SUMIF / AVGIF style) ────────────────────────
+
+/**
+ * Execute a single calculated metric against a pre-filtered row set.
+ *
+ * The row set should already have base widget filters applied. This function
+ * applies the metric's own conditions on top, then aggregates.
+ *
+ * metric shape: { name, aggregation: 'count'|'sum'|'avg', column?, conditions: [] }
+ *
+ * @param {object[]} rows   — rows after enrichment + base widget filters
+ * @param {object}   metric — CalculatedMetric definition
+ * @returns {number}
+ */
+export function executeCalculatedMetric(rows, metric) {
+  const filtered = applyFilters(rows, metric.conditions ?? [])
+  const { aggregation, column } = metric
+  if (!filtered.length) return 0
+  switch (aggregation) {
+    case 'sum': return sum(colNums(filtered, column))
+    case 'avg': return sum(colNums(filtered, column)) / filtered.length
+    case 'min': return Math.min(...colNums(filtered, column))
+    case 'max': return Math.max(...colNums(filtered, column))
+    case 'count_distinct': return new Set(filtered.map((r) => String(r.data?.[column] ?? ''))).size
+    default:    return filtered.length  // 'count'
+  }
+}
+
+// ── Pivot table data ──────────────────────────────────────────────────────────
+
+/**
+ * Build flat pivot data suitable for a sortable table.
+ *
+ * Groups rows by formula.group_by columns, aggregates formula.value_column,
+ * and returns an array sorted descending by value.
+ *
+ * Each result entry: { [groupCol]: label, ..., _value: number, _count: number }
+ *
+ * @param {object[]} rows    — raw dataset rows
+ * @param {object}   formula — pivot_table formula
+ * @returns {object[]}
+ */
+export function getPivotData(rows, formula) {
+  const { group_by = [], value_column, aggregation = 'sum', computed_columns, filters } = formula
+  const enriched = enrichRows(rows, computed_columns)
+  const filtered = applyFilters(enriched, filters ?? [])
+  const groups   = groupRows(filtered, group_by)
+
+  const result = []
+  for (const [key, groupedRows] of groups) {
+    const parts = group_by.length ? key.split('\x00') : []
+    const entry = {}
+    group_by.forEach((col, i) => { entry[col] = parts[i] ?? '' })
+    entry._value = aggGroup(groupedRows, value_column, aggregation)
+    entry._count = groupedRows.length
+    result.push(entry)
+  }
+
+  return result.sort((a, b) => b._value - a._value)
+}
+
 // ── Colour map ────────────────────────────────────────────────────────────────
 
 export const STROKE_COLOR = {
