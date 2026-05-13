@@ -2,8 +2,10 @@
  * useDashboardLayout
  *
  * ROW_HEIGHT = 40px, GAP = 12px  (set in DashboardPage)
- *   Chart h=4  → 4×40 + 3×12 = 196px  (~200px, half the old 404px default)
- *   Chart minH=3 → 3×40 + 2×12 = 144px (smallest usable chart)
+ *   KPI S(h=3)  → 3×40 + 2×12 = 144px
+ *   KPI M(h=3)  → 3×40 + 2×12 = 144px  (default)
+ *   KPI L(h=4)  → 4×40 + 3×12 = 196px
+ *   Chart h=8   → 8×40 + 7×12 = 404px  (default)
  *
  * LAYOUT_VERSION must be bumped whenever ROW_HEIGHT or default sizes change.
  * A version mismatch auto-resets every user's saved layout to fresh defaults.
@@ -15,30 +17,32 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 4   // ← bumped: unified grid (KPIs + charts in single react-grid-layout)
+const LAYOUT_VERSION  = 5   // ← bumped: smaller KPI defaults (w=3,h=3) + taller chart defaults (h=8)
 const MAX_SNAPSHOTS   = 10
 
 // ROW_HEIGHT = 40px, GAP = 12px  (set in DashboardPage)
+// KPI sizes:   S(w=2,h=3) → M(w=3,h=3) → L(w=4,h=4)   — default is M
+// Chart sizes: half(w=6)  → full(w=12)                  — default is full, h=8
 const SIZE_CONFIG = {
   kpi: {
-    w: 4,  h: 5,
+    w: 3,  h: 3,
     minW: 2, maxW: 12,
     minH: 3, maxH: 8,
   },
   line_chart: {
-    w: 12, h: 4,
+    w: 12, h: 8,
     minW: 4, maxW: 12,
-    minH: 3, maxH: 20,
+    minH: 4, maxH: 24,
   },
   bar_chart: {
-    w: 12, h: 4,
+    w: 12, h: 8,
     minW: 4, maxW: 12,
-    minH: 3, maxH: 20,
+    minH: 4, maxH: 24,
   },
   comparison: {
-    w: 12, h: 4,
+    w: 12, h: 8,
     minW: 4, maxW: 12,
-    minH: 3, maxH: 20,
+    minH: 4, maxH: 24,
   },
 }
 

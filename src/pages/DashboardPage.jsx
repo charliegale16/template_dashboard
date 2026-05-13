@@ -125,9 +125,33 @@ function shortNum(v) {
   return Number(v.toFixed(2)).toString()
 }
 
+// ── Size preset definitions ───────────────────────────────────────────────────
+
+const KPI_PRESETS = [
+  { label: 'S', w: 2, h: 3 },
+  { label: 'M', w: 3, h: 3 },
+  { label: 'L', w: 4, h: 4 },
+]
+
+const CHART_PRESETS = [
+  { label: '½',  w: 6  },
+  { label: '■', w: 12 },
+]
+
+// Shared grip dots SVG
+function GripDots({ className = 'w-3.5 h-3.5 text-gray-300 dark:text-gray-600' }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 20 20">
+      <circle cx="7"  cy="4"  r="1.4"/><circle cx="13" cy="4"  r="1.4"/>
+      <circle cx="7"  cy="10" r="1.4"/><circle cx="13" cy="10" r="1.4"/>
+      <circle cx="7"  cy="16" r="1.4"/><circle cx="13" cy="16" r="1.4"/>
+    </svg>
+  )
+}
+
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
-function KPICard({ kpi, rows, prevRows }) {
+function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
   const value     = useMemo(() => computeKPI(rows, kpi.formula),     [rows, kpi.formula])
   const prevValue = useMemo(() => computeKPI(prevRows, kpi.formula), [prevRows, kpi.formula])
   const formatted = formatKPI(value, kpi.format)
@@ -140,38 +164,66 @@ function KPICard({ kpi, rows, prevRows }) {
   const isUp = trendPct !== null && trendPct >= 0
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-1 h-full relative">
-      {/* Subtle drag grip in top-right corner */}
-      <div className="drag-handle absolute top-2 right-2 p-1 cursor-grab active:cursor-grabbing">
-        <svg className="w-3 h-3 text-gray-200 dark:text-gray-600" fill="currentColor" viewBox="0 0 24 24">
-          <circle cx="9"  cy="6"  r="1.5"/><circle cx="15" cy="6"  r="1.5"/>
-          <circle cx="9"  cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
-          <circle cx="9"  cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
-        </svg>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 h-full flex flex-col overflow-hidden">
+
+      {/* Top bar: label + size presets + drag grip */}
+      <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 shrink-0">
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 truncate flex-1 min-w-0">{kpi.name}</p>
+
+        {/* S / M / L presets */}
+        <div className="flex items-center gap-px shrink-0">
+          {KPI_PRESETS.map((p) => {
+            const active = layoutItem?.w === p.w
+            return (
+              <button
+                key={p.label}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => onSizePreset?.(kpi.id, p.w, p.h)}
+                className={`text-[10px] font-semibold w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                  active
+                    ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300'
+                    : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-500 dark:hover:text-gray-400'
+                }`}
+                title={`${p.label === 'S' ? 'Small' : p.label === 'M' ? 'Medium' : 'Large'} tile`}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Drag grip */}
+        <div className="drag-handle cursor-grab active:cursor-grabbing shrink-0 flex items-center pl-0.5">
+          <GripDots />
+        </div>
       </div>
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 truncate pr-5">{kpi.name}</p>
-      <p className="text-3xl font-bold text-gray-900 dark:text-white leading-tight">{formatted}</p>
-      {trendPct !== null && (
-        <p className={`text-xs font-medium flex items-center gap-0.5 mt-0.5 ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
-          {isUp ? (
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
-            </svg>
-          ) : (
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-            </svg>
-          )}
-          {Math.abs(trendPct).toFixed(1)}% vs prior period
-        </p>
-      )}
+
+      {/* Value */}
+      <div className="flex-1 flex flex-col justify-center px-3 pb-3 min-h-0">
+        <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none">{formatted}</p>
+        {trendPct !== null && (
+          <p className={`text-xs font-medium flex items-center gap-0.5 mt-1.5 ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+            {isUp ? (
+              <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+              </svg>
+            ) : (
+              <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            )}
+            <span className="truncate">{Math.abs(trendPct).toFixed(1)}% vs prior</span>
+          </p>
+        )}
+      </div>
+
     </div>
   )
 }
 
 // ── Chart Widget ──────────────────────────────────────────────────────────────
 
-function ChartWidget({ widget, rows }) {
+function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
   const data    = useMemo(() => getChartData(rows, widget.formula), [rows, widget.formula])
   const wt      = widget.formula?.widget_type
   const stroke1 = STROKE_COLOR[widget.color]  ?? '#3b82f6'
@@ -189,14 +241,38 @@ function ChartWidget({ widget, rows }) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm h-full flex flex-col">
-      {/* Drag handle header */}
-      <div className="drag-handle flex items-center px-5 pt-4 pb-2 cursor-grab active:cursor-grabbing shrink-0">
-        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex-1 truncate">{widget.name}</p>
-        <svg className="w-4 h-4 text-gray-300 dark:text-gray-600" fill="currentColor" viewBox="0 0 24 24">
-          <circle cx="9" cy="6"  r="1.5"/><circle cx="15" cy="6"  r="1.5"/>
-          <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
-          <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
-        </svg>
+
+      {/* Header: drag area (title + grip) | size presets (non-draggable) */}
+      <div className="flex items-center shrink-0 px-4 pt-3 pb-2 gap-2">
+
+        {/* Drag zone — title + grip */}
+        <div className="drag-handle flex items-center gap-2 flex-1 min-w-0 cursor-grab active:cursor-grabbing">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate flex-1">{widget.name}</p>
+          <GripDots />
+        </div>
+
+        {/* ½ / Full width presets — NOT inside drag handle */}
+        <div className="flex items-center gap-px shrink-0">
+          {CHART_PRESETS.map((p) => {
+            const active = layoutItem?.w === p.w
+            return (
+              <button
+                key={p.label}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => onSizePreset?.(widget.id, p.w, layoutItem?.h ?? 8)}
+                className={`text-[10px] font-semibold px-2 h-5 rounded flex items-center justify-center transition-colors ${
+                  active
+                    ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300'
+                    : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-500 dark:hover:text-gray-400'
+                }`}
+                title={p.w === 6 ? 'Half width' : 'Full width'}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+
       </div>
 
       <div className="flex-1 px-4 pb-4 min-h-0">
@@ -255,6 +331,16 @@ function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoa
     return () => ro.disconnect()
   }, [])
 
+  // Apply a preset size to a single widget and persist
+  const handleSizePreset = useCallback((widgetId, newW, newH) => {
+    const updated = layout.map((item) =>
+      item.i === widgetId
+        ? { ...item, w: Math.min(newW, item.maxW ?? 12), h: Math.min(newH, item.maxH ?? 24) }
+        : item
+    )
+    onLayoutChange(updated)
+  }, [layout, onLayoutChange])
+
   if (!layoutLoaded) return null
 
   return (
@@ -274,11 +360,12 @@ function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoa
         {widgets.map((w) => {
           const wt = w.formula?.widget_type
           const isKPI = !wt || wt === 'kpi'
+          const layoutItem = layout.find((l) => l.i === w.id)
           return (
             <div key={w.id}>
               {isKPI
-                ? <KPICard kpi={w} rows={rows} prevRows={prevRows} />
-                : <ChartWidget widget={w} rows={rows} />}
+                ? <KPICard kpi={w} rows={rows} prevRows={prevRows} layoutItem={layoutItem} onSizePreset={handleSizePreset} />
+                : <ChartWidget widget={w} rows={rows} layoutItem={layoutItem} onSizePreset={handleSizePreset} />}
             </div>
           )
         })}
