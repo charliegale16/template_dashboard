@@ -165,10 +165,10 @@ const CHART_PRESETS = [
 
 // KPI value font scales with tile height (grid rows)
 function kpiValueClass(h) {
-  if (h >= 9)  return 'text-4xl'
-  if (h >= 6)  return 'text-3xl'
-  if (h >= 3)  return 'text-xl'
-  return 'text-base'
+  if (h >= 9)  return 'text-5xl'
+  if (h >= 6)  return 'text-4xl'
+  if (h >= 3)  return 'text-2xl'
+  return 'text-xl'
 }
 
 // ── Shared grip icon ──────────────────────────────────────────────────────────
@@ -221,14 +221,9 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
   return (
     <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
 
-      {/* Header: label + S/M/L buttons + drag grip */}
-      <div className="flex items-center gap-1 px-2 pt-2 pb-0.5 shrink-0">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 truncate flex-1 min-w-0">
-          {kpi.name}
-        </p>
-
-        {/* Size presets */}
-        <div className="flex items-center gap-px shrink-0">
+      {/* Top bar: only controls — S/M/L presets + drag grip. No title here. */}
+      <div className="flex items-center justify-end gap-1 px-2 pt-1.5 shrink-0">
+        <div className="flex items-center gap-px">
           {KPI_PRESETS.map((p) => {
             const active = layoutItem?.h === p.h
             return (
@@ -248,20 +243,21 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
             )
           })}
         </div>
-
-        {/* Drag grip */}
-        <div className="drag-handle cursor-grab active:cursor-grabbing shrink-0 flex items-center">
+        <div className="drag-handle cursor-grab active:cursor-grabbing flex items-center">
           <GripDots />
         </div>
       </div>
 
-      {/* Value area — centered both axes, flex-1 min-h-0 prevents overflow */}
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-2 pb-2 gap-1">
+      {/* Center: value + title stacked — both the same color, title always visible */}
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-2 pb-2 gap-0.5">
         <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums`}>
           {formatted}
         </p>
+        <p className="text-xs font-semibold text-gray-900 dark:text-white truncate w-full text-center leading-tight">
+          {kpi.name}
+        </p>
         {showTrend && (
-          <p className={`text-xs font-medium flex items-center gap-0.5 ${
+          <p className={`text-xs font-medium flex items-center gap-0.5 mt-0.5 ${
             isUp ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
           }`}>
             <TrendArrow up={isUp} />
