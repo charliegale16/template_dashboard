@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useTheme } from '../hooks/useTheme'
 
 // ── Avatar helpers ────────────────────────────────────────────────────────────
 
@@ -92,9 +93,40 @@ function InfoRow({ label, value }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const THEME_OPTIONS = [
+  {
+    value: 'light',
+    label: 'Light',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+      </svg>
+    ),
+  },
+  {
+    value: 'dark',
+    label: 'Dark',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+      </svg>
+    ),
+  },
+  {
+    value: 'system',
+    label: 'System',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+]
+
 export default function ProfilePage() {
   const navigate = useNavigate()
   const { user, accessToken, logout } = useAuth()
+  const { theme, setTheme } = useTheme()
 
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name
   const email = user?.email
@@ -163,6 +195,30 @@ export default function ProfilePage() {
             <InfoRow label="Member since" value={createdAt} />
             <InfoRow label="Last sign in" value={lastSignIn} />
             <InfoRow label="User ID" value={user?.id} />
+          </div>
+        </div>
+
+        {/* Preferences */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-6">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Preferences</h2>
+          <p className="text-xs text-gray-400 mb-4">Choose how GridFlow looks on this device.</p>
+          <div className="flex items-center gap-2">
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setTheme(opt.value)}
+                className={`flex-1 flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border text-xs font-medium transition-all ${
+                  theme === opt.value
+                    ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300 shadow-sm'
+                    : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                }`}
+              >
+                <span className={theme === opt.value ? 'text-brand-600 dark:text-brand-400' : ''}>
+                  {opt.icon}
+                </span>
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
 

@@ -15,7 +15,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 3   // ← bumped: resets all saved chart heights to h=4 (~200px)
+const LAYOUT_VERSION  = 4   // ← bumped: unified grid (KPIs + charts in single react-grid-layout)
 const MAX_SNAPSHOTS   = 10
 
 // ROW_HEIGHT = 40px, GAP = 12px  (set in DashboardPage)

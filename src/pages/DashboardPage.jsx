@@ -140,8 +140,16 @@ function KPICard({ kpi, rows, prevRows }) {
   const isUp = trendPct !== null && trendPct >= 0
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-1 h-full">
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">{kpi.name}</p>
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-1 h-full relative">
+      {/* Subtle drag grip in top-right corner */}
+      <div className="drag-handle absolute top-2 right-2 p-1 cursor-grab active:cursor-grabbing">
+        <svg className="w-3 h-3 text-gray-200 dark:text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+          <circle cx="9"  cy="6"  r="1.5"/><circle cx="15" cy="6"  r="1.5"/>
+          <circle cx="9"  cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+          <circle cx="9"  cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+        </svg>
+      </div>
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 truncate pr-5">{kpi.name}</p>
       <p className="text-3xl font-bold text-gray-900 dark:text-white leading-tight">{formatted}</p>
       {trendPct !== null && (
         <p className={`text-xs font-medium flex items-center gap-0.5 mt-0.5 ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
@@ -201,7 +209,7 @@ function ChartWidget({ widget, rows }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                 <XAxis dataKey="x" {...axisProps} interval={0} />
                 <YAxis {...axisProps} width={50} tickFormatter={shortNum} />
-                <Tooltip {...tooltipStyle} />
+                <Tooltip {...tooltipStyle} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
                 <Bar dataKey="y" name={widget.formula?.y_label || widget.formula?.y_column || 'Value'} fill={stroke1} radius={[3,3,0,0]} maxBarSize={48} />
               </BarChart>
             ) : wt === 'comparison' ? (
@@ -230,13 +238,13 @@ function ChartWidget({ widget, rows }) {
   )
 }
 
-// ── Chart Grid ────────────────────────────────────────────────────────────────
+// ── Unified Widget Grid (KPIs + Charts) ───────────────────────────────────────
 
 const ROW_HEIGHT = 40
 const GRID_GAP   = 12
 const GRID_COLS  = 12
 
-function ChartGrid({ widgets, rows, layout, onLayoutChange, layoutLoaded }) {
+function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoaded }) {
   const containerRef = useRef(null)
   const [width, setWidth] = useState(900)
 
@@ -263,11 +271,17 @@ function ChartGrid({ widgets, rows, layout, onLayoutChange, layoutLoaded }) {
         isResizable
         isDraggable
       >
-        {widgets.map((w) => (
-          <div key={w.id}>
-            <ChartWidget widget={w} rows={rows} />
-          </div>
-        ))}
+        {widgets.map((w) => {
+          const wt = w.formula?.widget_type
+          const isKPI = !wt || wt === 'kpi'
+          return (
+            <div key={w.id}>
+              {isKPI
+                ? <KPICard kpi={w} rows={rows} prevRows={prevRows} />
+                : <ChartWidget widget={w} rows={rows} />}
+            </div>
+          )
+        })}
       </GridLayout>
     </div>
   )
@@ -374,21 +388,11 @@ export default function DashboardPage() {
     [allRows, dateCol, dateFilter, colFilters]
   )
 
-  // ── Widget split ──────────────────────────────────────────────────────────
-  const kpiWidgets   = kpis.filter((k) => !k.formula?.widget_type || k.formula.widget_type === 'kpi')
-  const chartWidgets = kpis.filter((k) =>  k.formula?.widget_type && k.formula.widget_type !== 'kpi')
-
   // ── Layout ────────────────────────────────────────────────────────────────
   const {
     layout, layoutLoaded, onLayoutChange, resetLayout,
     snapshots, saveSnapshot, loadSnapshot, deleteSnapshot,
   } = useDashboardLayout(sourceId, userId, kpis)
-
-  // Chart-only layout slice (GridLayout only gets chart widgets)
-  const chartLayout = useMemo(
-    () => layout.filter((l) => chartWidgets.some((w) => w.id === l.i)),
-    [layout, chartWidgets]
-  )
 
   // ── Save view UI ──────────────────────────────────────────────────────────
   const [saveViewOpen,  setSaveViewOpen]  = useState(false)
@@ -813,30 +817,14 @@ export default function DashboardPage() {
             </button>
           </div>
         ) : (
-          <>
-            {/* KPI Cards */}
-            {kpiWidgets.length > 0 && (
-              <div
-                className="grid gap-4"
-                style={{ gridTemplateColumns: `repeat(${Math.min(kpiWidgets.length, 6)}, minmax(0, 1fr))` }}
-              >
-                {kpiWidgets.map((kpi) => (
-                  <KPICard key={kpi.id} kpi={kpi} rows={rows} prevRows={prevRows} />
-                ))}
-              </div>
-            )}
-
-            {/* Chart Grid */}
-            {chartWidgets.length > 0 && (
-              <ChartGrid
-                widgets={chartWidgets}
-                rows={rows}
-                layout={chartLayout}
-                onLayoutChange={onLayoutChange}
-                layoutLoaded={layoutLoaded}
-              />
-            )}
-          </>
+          <WidgetGrid
+            widgets={kpis}
+            rows={rows}
+            prevRows={prevRows}
+            layout={layout}
+            onLayoutChange={onLayoutChange}
+            layoutLoaded={layoutLoaded}
+          />
         )}
       </main>
     </div>

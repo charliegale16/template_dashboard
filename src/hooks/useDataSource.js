@@ -182,3 +182,12 @@ export async function refreshDataSource({ sourceId, userId, headers, rows, meta 
   if (srcErr) throw new Error(srcErr.message)
   return source
 }
+
+/** Rename a data source */
+export async function renameSource(id, newName) {
+  const { error } = await supabase
+    .from('data_sources')
+    .update({ name: newName.trim() })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+}

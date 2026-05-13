@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useDataSources, duplicateSource } from '../hooks/useDataSource'
+import { useDataSources, duplicateSource, renameSource } from '../hooks/useDataSource'
 import { useAuth } from '../hooks/useAuth'
 import { Avatar } from './ProfilePage'
 
@@ -14,9 +14,32 @@ function timeAgo(isoString) {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-function SourceCard({ source, onDelete, onDuplicate }) {
+function SourceCard({ source, onDelete, onDuplicate, onRename }) {
   const navigate = useNavigate()
   const [duplicating, setDuplicating] = useState(false)
+
+  // Options dropdown
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const optionsRef = useRef(null)
+
+  // Inline rename
+  const [editing,  setEditing]  = useState(false)
+  const [editName, setEditName] = useState(source.name)
+  const [saving,   setSaving]   = useState(false)
+  const editRef = useRef(null)
+
+  useEffect(() => {
+    if (editing && editRef.current) editRef.current.focus()
+  }, [editing])
+
+  useEffect(() => {
+    if (!optionsOpen) return
+    function handler(e) {
+      if (optionsRef.current && !optionsRef.current.contains(e.target)) setOptionsOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [optionsOpen])
 
   const version    = source.meta?.version ?? 1
   const updatedAt  = source.meta?.updated_at
@@ -24,13 +47,12 @@ function SourceCard({ source, onDelete, onDuplicate }) {
     ? new Date(updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : null
 
-  const isSheet      = source.type === 'sheet'
-  const isTemplate   = Boolean(source.meta?.template_from)
-  const syncStatus   = source.meta?.sync_status
-  const lastSynced   = source.meta?.last_synced_at
-  const iconCls = isSheet
-    ? 'bg-emerald-100 dark:bg-emerald-900/40'
-    : source.type === 'excel'
+  const isSheet    = source.type === 'sheet'
+  const isTemplate = Boolean(source.meta?.template_from)
+  const syncStatus = source.meta?.sync_status
+  const lastSynced = source.meta?.last_synced_at
+
+  const iconCls = isSheet || source.type === 'excel'
     ? 'bg-emerald-100 dark:bg-emerald-900/40'
     : 'bg-blue-100 dark:bg-blue-900/40'
 
@@ -40,10 +62,27 @@ function SourceCard({ source, onDelete, onDuplicate }) {
     finally { setDuplicating(false) }
   }
 
+  async function handleRename() {
+    const trimmed = editName.trim()
+    if (!trimmed || trimmed === source.name) { setEditing(false); return }
+    setSaving(true)
+    try { await onRename(source.id, trimmed) }
+    finally { setSaving(false); setEditing(false) }
+  }
+
+  function openEdit() {
+    setEditName(source.name)
+    setEditing(true)
+    setOptionsOpen(false)
+  }
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
+
+      {/* ── Header row ── */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
+          {/* Type icon */}
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${iconCls}`}>
             {isSheet ? (
               <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -55,25 +94,64 @@ function SourceCard({ source, onDelete, onDuplicate }) {
               </svg>
             )}
           </div>
+
+          {/* Name + meta */}
           <div className="min-w-0">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm truncate">{source.name}</h3>
-            <p className="text-xs text-gray-400 truncate">
+            {/* Inline rename input */}
+            {editing ? (
+              <div className="flex items-center gap-1">
+                <input
+                  ref={editRef}
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRename()
+                    if (e.key === 'Escape') setEditing(false)
+                  }}
+                  className="text-sm font-semibold text-gray-900 dark:text-gray-100 bg-transparent border-b border-brand-400 focus:outline-none w-full"
+                />
+                <button
+                  onClick={handleRename}
+                  disabled={saving}
+                  className="text-xs text-brand-600 dark:text-brand-400 font-medium shrink-0"
+                >
+                  {saving ? '…' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm truncate">{source.name}</h3>
+            )}
+            <p className="text-xs text-gray-400 truncate mt-0.5">
               {source.row_count.toLocaleString()} rows · {source.type.toUpperCase()}
-              {version > 1 && <span className="ml-1.5 px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-medium text-[10px]">v{version}</span>}
+              {version > 1 && (
+                <span className="ml-1.5 px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-medium text-[10px]">v{version}</span>
+              )}
               {updatedStr && <span className="ml-1">· {updatedStr}</span>}
-              {isTemplate && <span className="ml-1.5 px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium text-[10px]">template</span>}
+              {isTemplate && (
+                <span className="ml-1.5 px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium text-[10px]">template</span>
+              )}
             </p>
             {/* Sheet sync status */}
             {isSheet && lastSynced && (
               <p className={`text-[10px] mt-0.5 flex items-center gap-1 ${syncStatus === 'error' ? 'text-red-400' : 'text-gray-400'}`}>
                 {syncStatus === 'error' ? (
                   <>
-                    <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
                     Sync error · {timeAgo(lastSynced)}
                   </>
                 ) : (
                   <>
-                    <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                     Synced {timeAgo(lastSynced)}
                   </>
                 )}
@@ -81,6 +159,8 @@ function SourceCard({ source, onDelete, onDuplicate }) {
             )}
           </div>
         </div>
+
+        {/* ── Icon actions ── */}
         <div className="flex items-center gap-1 shrink-0">
           {/* Duplicate */}
           <button
@@ -90,13 +170,16 @@ function SourceCard({ source, onDelete, onDuplicate }) {
             title="Duplicate dashboard"
           >
             {duplicating ? (
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
             ) : (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
             )}
           </button>
+
           {/* Delete */}
           <button
             onClick={() => onDelete(source.id)}
@@ -110,24 +193,55 @@ function SourceCard({ source, onDelete, onDuplicate }) {
         </div>
       </div>
 
-      <div className="flex gap-2 mt-1">
+      {/* ── Action buttons ── */}
+      <div className="flex gap-2">
         <button onClick={() => navigate(`/source/${source.id}`)} className="flex-1 btn-primary py-1.5 text-xs">
           Dashboard →
         </button>
         <button onClick={() => navigate(`/source/${source.id}/kpis`)} className="btn-secondary py-1.5 text-xs px-3">
           Widgets
         </button>
-        {!isSheet && (
+
+        {/* Options dropdown (replaces bare re-upload icon) */}
+        <div className="relative" ref={optionsRef}>
           <button
-            onClick={() => navigate(`/source/${source.id}/update`)}
-            className="btn-secondary py-1.5 text-xs px-3"
-            title="Re-upload data file"
+            onClick={() => setOptionsOpen((o) => !o)}
+            className="btn-secondary py-1.5 text-xs px-3 flex items-center gap-1"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            Options
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
-        )}
+
+          {optionsOpen && (
+            <div className="absolute right-0 bottom-full mb-1 w-40 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-lg z-30 py-1 overflow-hidden">
+              {/* Edit name */}
+              <button
+                onClick={openEdit}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit name
+              </button>
+
+              {/* Re-upload (file sources only) */}
+              {!isSheet && (
+                <button
+                  onClick={() => { setOptionsOpen(false); navigate(`/source/${source.id}/update`) }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Re-upload
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -149,6 +263,11 @@ export default function HomePage() {
     await reload()
   }
 
+  async function handleRename(id, newName) {
+    await renameSource(id, newName)
+    await reload()
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <header className="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-10">
@@ -161,6 +280,7 @@ export default function HomePage() {
             </div>
             <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Analytics</span>
           </div>
+
           {/* Avatar + dropdown */}
           <div className="relative">
             <button
@@ -179,9 +299,7 @@ export default function HomePage() {
 
             {menuOpen && (
               <>
-                {/* Backdrop */}
                 <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                {/* Dropdown */}
                 <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-lg z-20 py-1 overflow-hidden">
                   <div className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-700">
                     <p className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">
@@ -227,7 +345,9 @@ export default function HomePage() {
 
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(3)].map((_, i) => <div key={i} className="h-36 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 animate-pulse" />)}
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-36 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 animate-pulse" />
+            ))}
           </div>
         ) : sources.length === 0 ? (
           <div className="text-center py-20">
@@ -242,7 +362,13 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {sources.map((s) => (
-              <SourceCard key={s.id} source={s} onDelete={handleDelete} onDuplicate={handleDuplicate} />
+              <SourceCard
+                key={s.id}
+                source={s}
+                onDelete={handleDelete}
+                onDuplicate={handleDuplicate}
+                onRename={handleRename}
+              />
             ))}
           </div>
         )}
