@@ -1,11 +1,12 @@
 /**
  * useDashboardLayout
  *
- * ROW_HEIGHT = 32px, GAP = 12px  (set in DashboardPage)
- *   KPI S(h=2)  → 2×32 + 1×12 =  76px  (default)
- *   KPI M(h=3)  → 3×32 + 2×12 = 120px
- *   KPI L(h=4)  → 4×32 + 3×12 = 164px
- *   Chart h=5   → 5×32 + 4×12 = 208px  (default)
+ * GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px  (set in DashboardPage)
+ *   height formula: h×31 + (h-1)×8 = 39h − 8
+ *   KPI  S  w=2  h=3  →  109px tall × ~110px wide  ≈ square
+ *   KPI  M  w=4  h=6  →  226px tall × ~220px wide  ≈ square
+ *   KPI  L  w=6  h=9  →  343px tall × ~330px wide  ≈ square
+ *   Chart   w=24 h=8  →  304px tall, full width
  *
  * LAYOUT_VERSION must be bumped whenever ROW_HEIGHT or default sizes change.
  * A version mismatch auto-resets every user's saved layout to fresh defaults.
@@ -17,7 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 9   // ← bumped: 24-col grid, ROW_HEIGHT=31, GAP=8 for pixel-accurate sizes
+const LAYOUT_VERSION  = 10  // ← bumped: force reset — clears stale oversized saved layouts
 const MAX_SNAPSHOTS   = 10
 
 // GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px  (set in DashboardPage)
@@ -64,7 +65,8 @@ export function buildDefaultLayout(kpis) {
   const chartWidgets = kpis.filter((k) => widgetType(k) !== 'kpi')
 
   const kc = SIZE_CONFIG.kpi
-  const perRow = Math.floor(12 / kc.w)   // 3 KPI cards per row
+  const GRID_COLS = 24
+  const perRow = Math.floor(GRID_COLS / kc.w)  // tiles across the full grid width
 
   kpiWidgets.forEach((kpi, i) => {
     layout.push({

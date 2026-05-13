@@ -222,8 +222,8 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
     <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
 
       {/* Header: label + S/M/L buttons + drag grip */}
-      <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 shrink-0">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 truncate flex-1 min-w-0">
+      <div className="flex items-center gap-1 px-2 pt-2 pb-0.5 shrink-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 truncate flex-1 min-w-0">
           {kpi.name}
         </p>
 
@@ -255,8 +255,8 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
         </div>
       </div>
 
-      {/* Value area — flex-1 min-h-0 prevents flex overflow */}
-      <div className="flex-1 min-h-0 flex flex-col items-start justify-center px-3 pb-2.5 gap-1">
+      {/* Value area — centered both axes, flex-1 min-h-0 prevents overflow */}
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-2 pb-2 gap-1">
         <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums`}>
           {formatted}
         </p>
@@ -265,7 +265,7 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
             isUp ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
           }`}>
             <TrendArrow up={isUp} />
-            <span>{Math.abs(trendPct).toFixed(1)}% vs prior period</span>
+            <span>{Math.abs(trendPct).toFixed(1)}%</span>
           </p>
         )}
       </div>
