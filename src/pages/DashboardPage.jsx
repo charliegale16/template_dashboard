@@ -439,7 +439,7 @@ function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoa
           const isKPI   = !wt || wt === 'kpi'
           const item    = layout.find((l) => l.i === w.id)
           return (
-            <div key={w.id}>
+            <div key={w.id} className="h-full">
               {isKPI
                 ? <KPICard    kpi={w}    rows={rows} prevRows={prevRows} layoutItem={item} onSizePreset={handleSizePreset} />
                 : <ChartWidget widget={w} rows={rows}                     layoutItem={item} onSizePreset={handleSizePreset} />

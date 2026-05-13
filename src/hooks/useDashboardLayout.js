@@ -18,7 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 10  // ← bumped: force reset — clears stale oversized saved layouts
+const LAYOUT_VERSION  = 11  // ← bumped: force reset — clears stale oversized saved layouts
 const MAX_SNAPSHOTS   = 10
 
 // GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px  (set in DashboardPage)
