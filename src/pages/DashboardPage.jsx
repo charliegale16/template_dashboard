@@ -394,7 +394,7 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
 // ResizeObserver measures the true container width so GridLayout renders
 // correctly at any viewport without needing a responsive breakpoint config.
 
-function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoaded }) {
+function WidgetGrid({ widgets, rows, prevRows, layout, layoutEpoch, onLayoutChange, layoutLoaded }) {
   const containerRef = useRef(null)
   const [width, setWidth] = useState(900)
 
@@ -423,6 +423,7 @@ function WidgetGrid({ widgets, rows, prevRows, layout, onLayoutChange, layoutLoa
   return (
     <div ref={containerRef} className="w-full">
       <GridLayout
+        key={layoutEpoch}
         layout={layout}
         cols={GRID_COLS}
         rowHeight={ROW_HEIGHT}
@@ -553,7 +554,7 @@ export default function DashboardPage() {
 
   // ── Layout ────────────────────────────────────────────────────────────────
   const {
-    layout, layoutLoaded, onLayoutChange, resetLayout,
+    layout, layoutLoaded, layoutEpoch, onLayoutChange, resetLayout,
     snapshots, saveSnapshot, loadSnapshot, deleteSnapshot,
   } = useDashboardLayout(sourceId, userId, kpis)
 
@@ -992,6 +993,7 @@ export default function DashboardPage() {
             rows={rows}
             prevRows={prevRows}
             layout={layout}
+            layoutEpoch={layoutEpoch}
             onLayoutChange={onLayoutChange}
             layoutLoaded={layoutLoaded}
           />

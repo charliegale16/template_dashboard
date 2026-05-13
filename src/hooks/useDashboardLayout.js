@@ -18,7 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 11  // ← bumped: force reset — clears stale oversized saved layouts
+const LAYOUT_VERSION  = 12  // ← bumped: force reset — clears stale oversized saved layouts
 const MAX_SNAPSHOTS   = 10
 
 // GRID_COLS=24, ROW_HEIGHT=31px, GAP=8px  (set in DashboardPage)
@@ -139,9 +139,12 @@ export function useDashboardLayout(sourceId, userId, kpis) {
   const [layout, setLayout]         = useState([])
   const [snapshots, setSnapshots]   = useState([])
   const [layoutLoaded, setLoaded]   = useState(false)
+  // Incremented whenever the layout is programmatically replaced (load, reset, snapshot
+  // restore). Passed as `key` to GridLayout so react-grid-layout remounts and picks up
+  // the new layout — its internal state does not reliably sync to prop changes alone.
+  const [layoutEpoch, setEpoch]     = useState(0)
   const saveTimer                   = useRef(null)
-  // Keep a ref so callbacks always close over the latest snapshots without re-creating
-  const snapshotsRef = useRef(snapshots)
+  const snapshotsRef                = useRef(snapshots)
   useEffect(() => { snapshotsRef.current = snapshots }, [snapshots])
 
   // ── Load ─────────────────────────────────────────────────────────────────────
@@ -169,6 +172,7 @@ export function useDashboardLayout(sourceId, userId, kpis) {
           setLayout(fresh)
           persist({ sourceId, userId, items: fresh, snapshots: snaps })
         }
+        setEpoch((e) => e + 1)
         setLoaded(true)
       })
   }, [sourceId, userId, kpis.length]) // eslint-disable-line
@@ -192,6 +196,7 @@ export function useDashboardLayout(sourceId, userId, kpis) {
     if (!sourceId || !userId) return
     const fresh = buildDefaultLayout(kpis)
     setLayout(fresh)
+    setEpoch((e) => e + 1)
     persist({ sourceId, userId, items: fresh, snapshots: snapshotsRef.current })
   }, [sourceId, userId, kpis])
 
@@ -204,7 +209,6 @@ export function useDashboardLayout(sourceId, userId, kpis) {
       items:   layout,
       savedAt: new Date().toISOString(),
     }
-    // Cap at MAX_SNAPSHOTS — drop the oldest if over limit
     const next = [...snapshotsRef.current, snap].slice(-MAX_SNAPSHOTS)
     setSnapshots(next)
     snapshotsRef.current = next
@@ -218,6 +222,7 @@ export function useDashboardLayout(sourceId, userId, kpis) {
     if (!snap) return
     const restored = mergeLayout(snap.items, kpis)
     setLayout(restored)
+    setEpoch((e) => e + 1)
     persist({ sourceId, userId, items: restored, snapshots: snapshotsRef.current })
   }, [sourceId, userId, kpis])
 
@@ -230,7 +235,7 @@ export function useDashboardLayout(sourceId, userId, kpis) {
   }, [sourceId, userId, layout])
 
   return {
-    layout, layoutLoaded, onLayoutChange, resetLayout,
+    layout, layoutLoaded, layoutEpoch, onLayoutChange, resetLayout,
     snapshots, saveSnapshot, loadSnapshot, deleteSnapshot,
   }
 }
