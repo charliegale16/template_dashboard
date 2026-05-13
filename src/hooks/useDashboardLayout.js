@@ -1,11 +1,11 @@
 /**
  * useDashboardLayout
  *
- * ROW_HEIGHT = 40px, GAP = 12px  (set in DashboardPage)
- *   KPI S(h=3)  → 3×40 + 2×12 = 144px
- *   KPI M(h=3)  → 3×40 + 2×12 = 144px  (default)
- *   KPI L(h=4)  → 4×40 + 3×12 = 196px
- *   Chart h=8   → 8×40 + 7×12 = 404px  (default)
+ * ROW_HEIGHT = 32px, GAP = 12px  (set in DashboardPage)
+ *   KPI S(h=2)  → 2×32 + 1×12 =  76px  (default)
+ *   KPI M(h=3)  → 3×32 + 2×12 = 120px
+ *   KPI L(h=4)  → 4×32 + 3×12 = 164px
+ *   Chart h=5   → 5×32 + 4×12 = 208px  (default)
  *
  * LAYOUT_VERSION must be bumped whenever ROW_HEIGHT or default sizes change.
  * A version mismatch auto-resets every user's saved layout to fresh defaults.
@@ -17,32 +17,32 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 5   // ← bumped: smaller KPI defaults (w=3,h=3) + taller chart defaults (h=8)
+const LAYOUT_VERSION  = 6   // ← bumped: ROW_HEIGHT 40→32, compact KPI (h=2) + chart h=5
 const MAX_SNAPSHOTS   = 10
 
-// ROW_HEIGHT = 40px, GAP = 12px  (set in DashboardPage)
-// KPI sizes:   S(w=2,h=3) → M(w=3,h=3) → L(w=4,h=4)   — default is M
-// Chart sizes: half(w=6)  → full(w=12)                  — default is full, h=8
+// ROW_HEIGHT = 32px, GAP = 12px  (set in DashboardPage)
+// KPI presets:   S(h=2)→76px  M(h=3)→120px  L(h=4)→164px  — default S
+// Chart default: h=5 → 208px  (½ or full width)
 const SIZE_CONFIG = {
   kpi: {
-    w: 3,  h: 3,
+    w: 3, h: 2,
     minW: 2, maxW: 12,
-    minH: 3, maxH: 8,
+    minH: 2, maxH: 10,
   },
   line_chart: {
-    w: 12, h: 8,
+    w: 12, h: 5,
     minW: 4, maxW: 12,
-    minH: 4, maxH: 24,
+    minH: 3, maxH: 30,
   },
   bar_chart: {
-    w: 12, h: 8,
+    w: 12, h: 5,
     minW: 4, maxW: 12,
-    minH: 4, maxH: 24,
+    minH: 3, maxH: 30,
   },
   comparison: {
-    w: 12, h: 8,
+    w: 12, h: 5,
     minW: 4, maxW: 12,
-    minH: 4, maxH: 24,
+    minH: 3, maxH: 30,
   },
 }
 
