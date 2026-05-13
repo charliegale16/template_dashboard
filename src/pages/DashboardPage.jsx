@@ -126,25 +126,29 @@ function shortNum(v) {
 }
 
 // ── Size preset definitions ───────────────────────────────────────────────────
-// ROW_HEIGHT=32, GAP=12 → pixel heights:  h=2→76px  h=3→120px  h=4→164px  h=5→208px
+// ROW_HEIGHT=32, GAP=12
+//   S h=8  → ~340px tall  (square-ish at w=3, 4 per row)
+//   M h=10 → ~428px tall  (taller, at w=4, 3 per row)
+//   L h=14 → ~604px tall  (large, at w=6, 2 per row)
 
 const KPI_PRESETS = [
-  { label: 'S', w: 2, h: 2 },   // 76px  — compact chip
-  { label: 'M', w: 3, h: 3 },   // 120px — standard card
-  { label: 'L', w: 4, h: 4 },   // 164px — spacious card
+  { label: 'S', w: 3, h: 8  },
+  { label: 'M', w: 4, h: 10 },
+  { label: 'L', w: 6, h: 14 },
 ]
 
 const CHART_PRESETS = [
-  { label: '½',  w: 6  },   // half width
-  { label: '■', w: 12 },   // full width
+  { label: '½',  w: 6  },
+  { label: '■', w: 12 },
 ]
 
-// KPI value text scales with tile height so it fills the space
+// Value font scales with tile height so it fills the space naturally
 function kpiValueClass(h) {
-  if (h >= 5) return 'text-4xl'
-  if (h >= 4) return 'text-3xl'
-  if (h >= 3) return 'text-2xl'
-  return 'text-xl'                // h=2 default compact
+  if (h >= 14) return 'text-5xl'
+  if (h >= 10) return 'text-4xl'
+  if (h >= 6)  return 'text-3xl'
+  if (h >= 4)  return 'text-2xl'
+  return 'text-xl'
 }
 
 // Shared grip dots SVG
@@ -170,16 +174,16 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
     return ((value - prevValue) / Math.abs(prevValue)) * 100
   }, [value, prevValue, prevRows])
 
-  const isUp  = trendPct !== null && trendPct >= 0
-  const h     = layoutItem?.h ?? 2
-  const showTrend = h >= 3   // only show trend row when there's enough height
+  const isUp      = trendPct !== null && trendPct >= 0
+  const h         = layoutItem?.h ?? 8
+  const showTrend = h >= 5   // trend row visible once tile has enough height
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 h-full flex flex-col">
 
-      {/* Top bar: label + S/M/L + drag grip — all in one tight row */}
-      <div className="flex items-center gap-1 px-2.5 pt-2 pb-0 shrink-0">
-        <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 truncate flex-1 min-w-0 leading-none">
+      {/* Top bar: label + S/M/L + drag grip */}
+      <div className="flex items-center gap-1.5 px-3 pt-2.5 shrink-0">
+        <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 truncate flex-1 min-w-0">
           {kpi.name}
         </p>
 
@@ -195,7 +199,7 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
                 className={`text-[9px] font-bold w-4 h-4 rounded flex items-center justify-center transition-colors leading-none ${
                   active
                     ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300'
-                    : 'text-gray-200 dark:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-400 dark:hover:text-gray-400'
+                    : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-500 dark:hover:text-gray-400'
                 }`}
                 title={p.label === 'S' ? 'Small' : p.label === 'M' ? 'Medium' : 'Large'}
               >
@@ -207,27 +211,27 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
 
         {/* Drag grip */}
         <div className="drag-handle cursor-grab active:cursor-grabbing shrink-0 flex items-center">
-          <GripDots className="w-3 h-3 text-gray-200 dark:text-gray-700" />
+          <GripDots className="w-3 h-3 text-gray-300 dark:text-gray-600" />
         </div>
       </div>
 
-      {/* Value — centred, grows to fill tile height, text scales with h */}
-      <div className="flex-1 flex flex-col justify-center px-2.5 pb-2 min-h-0 gap-0.5">
+      {/* Value — vertically centred, font scales with tile height */}
+      <div className="flex-1 flex flex-col items-start justify-center px-3 pb-3 min-h-0 gap-1">
         <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums`}>
           {formatted}
         </p>
         {showTrend && trendPct !== null && (
-          <p className={`text-[11px] font-medium flex items-center gap-0.5 ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+          <p className={`text-xs font-medium flex items-center gap-0.5 ${isUp ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
             {isUp ? (
-              <svg className="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
               </svg>
             ) : (
-              <svg className="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
               </svg>
             )}
-            <span className="truncate">{Math.abs(trendPct).toFixed(1)}% vs prior</span>
+            <span>{Math.abs(trendPct).toFixed(1)}% vs prior period</span>
           </p>
         )}
       </div>

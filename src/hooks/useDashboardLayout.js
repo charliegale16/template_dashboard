@@ -17,15 +17,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-const LAYOUT_VERSION  = 7   // ← bumped: KPI minH 2→1, maxH 10→30, removed overflow-hidden
+const LAYOUT_VERSION  = 8   // ← bumped: KPI square-ish defaults (h=8 @ ROW_HEIGHT=32)
 const MAX_SNAPSHOTS   = 10
 
 // ROW_HEIGHT = 32px, GAP = 12px  (set in DashboardPage)
-// KPI presets:   S(h=2)→76px  M(h=3)→120px  L(h=4)→164px  — default S
-// Chart default: h=5 → 208px  (½ or full width)
+//   KPI w=3 tile pixel width  ≈ 341px at 1400px container
+//   KPI S h=8  → 8×32 + 7×12 = 340px  ≈ square  (4 per row)
+//   KPI M h=10 → 10×32 + 9×12 = 428px  (3 per row at w=4)
+//   KPI L h=14 → 14×32 + 13×12 = 604px (2 per row at w=6)
+//   Chart  h=5  → 5×32 + 4×12 = 208px  (unchanged)
 const SIZE_CONFIG = {
   kpi: {
-    w: 3, h: 2,
+    w: 3, h: 8,
     minW: 2, maxW: 12,
     minH: 1, maxH: 30,
   },
