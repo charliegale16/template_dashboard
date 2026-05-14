@@ -77,7 +77,7 @@ function SourceCard({ source, onDelete, onDuplicate, onRename }) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-5 flex flex-col justify-between gap-3 hover:shadow-md transition-shadow">
+    <div className="bg-white dark:bg-slate-800/80 rounded-2xl border border-gray-100 dark:border-slate-700/60 shadow-soft p-5 flex flex-col justify-between gap-3 hover:shadow-soft-md hover:-translate-y-px transition-all duration-200">
 
       {/* ── Header row ── */}
       <div className="flex items-start justify-between gap-2">
@@ -269,8 +269,8 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-10">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#0f172a]">
+      <header className="bg-white/80 dark:bg-[#0f172a]/90 backdrop-blur-md border-b border-gray-100 dark:border-slate-700/50 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center">
@@ -346,18 +346,41 @@ export default function HomePage() {
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-36 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 animate-pulse" />
+              <div key={i} className="rounded-2xl border border-gray-100 dark:border-slate-700/60 overflow-hidden p-5 space-y-3 bg-white dark:bg-slate-800/60">
+                <div className="flex items-center gap-3">
+                  <div className="shimmer w-8 h-8 rounded-lg shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="shimmer h-3.5 w-32 rounded" />
+                    <div className="shimmer h-3 w-24 rounded" />
+                  </div>
+                </div>
+                <div className="shimmer h-3 w-full rounded" />
+                <div className="flex gap-2 pt-1">
+                  <div className="shimmer flex-1 h-7 rounded-lg" />
+                  <div className="shimmer flex-1 h-7 rounded-lg" />
+                  <div className="shimmer flex-1 h-7 rounded-lg" />
+                </div>
+              </div>
             ))}
           </div>
         ) : sources.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/30 flex items-center justify-center mx-auto mb-5 shadow-soft">
+              <svg className="w-8 h-8 text-brand-400 dark:text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">No data sources yet.</p>
-            <button onClick={() => navigate('/upload')} className="btn-primary mt-4">Upload your first file</button>
+            <h3 className="text-gray-800 dark:text-gray-100 font-semibold text-base mb-1">No data sources yet</h3>
+            <p className="text-gray-400 dark:text-slate-500 text-sm mb-6 max-w-xs">
+              Upload a CSV or connect a Google Sheet to start building dashboards and KPIs.
+            </p>
+            <button onClick={() => navigate('/upload')} className="btn-primary gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add your first source
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

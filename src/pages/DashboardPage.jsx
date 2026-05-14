@@ -125,7 +125,7 @@ function shortNum(v) {
 }
 
 const AXIS_PROPS = {
-  tick:     { fontSize: 11, fill: '#9ca3af' },
+  tick:     { fontSize: 11, fill: 'var(--chart-axis, #94a3b8)' },
   tickLine: false,
   axisLine: false,
 }
@@ -133,10 +133,14 @@ const AXIS_PROPS = {
 const TOOLTIP_STYLE = {
   contentStyle: {
     fontSize: 12,
-    borderRadius: 8,
-    border: '1px solid #e5e7eb',
-    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.07)',
+    borderRadius: 10,
+    border: '1px solid var(--tooltip-border, #e2e8f0)',
+    backgroundColor: 'var(--tooltip-bg, #ffffff)',
+    color: 'var(--tooltip-text, #0f172a)',
+    boxShadow: 'var(--tooltip-shadow, 0 4px 16px rgba(0,0,0,0.08))',
+    padding: '8px 12px',
   },
+  labelStyle: { color: 'var(--tooltip-muted, #64748b)', marginBottom: 2 },
   formatter: shortNum,
 }
 
@@ -236,13 +240,13 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
   const accentBg  = KPI_ACCENT_BG[kpi.color] ?? 'bg-blue-500'
 
   return (
-    <div className="h-full relative group bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.07] transition-shadow hover:shadow-md">
+    <div className="h-full relative group bg-white dark:bg-slate-800/80 rounded-xl shadow-soft ring-1 ring-black/[0.05] dark:ring-white/[0.06] transition-shadow duration-200 hover:shadow-soft-md overflow-hidden">
 
-      {/* 3px colored top accent */}
-      <div className={`absolute top-0 inset-x-0 h-[3px] rounded-t-xl ${accentBg}`} />
+      {/* Colored top accent bar */}
+      <div className={`absolute top-0 inset-x-0 h-[3px] ${accentBg}`} />
 
       {/* Controls: fade in on hover */}
-      <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+      <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
         {KPI_PRESETS.map((p) => {
           const active = layoutItem?.h === p.h
           return (
@@ -250,10 +254,10 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
               key={p.label}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={() => onSizePreset?.(kpi.id, p.w, p.h)}
-              className={`text-[9px] font-bold w-4 h-4 rounded flex items-center justify-center transition-colors leading-none ${
+              className={`text-[9px] font-bold w-4 h-4 rounded flex items-center justify-center transition-all duration-150 leading-none ${
                 active
-                  ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400'
-                  : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-500 dark:hover:text-gray-400'
+                  ? 'bg-brand-100 dark:bg-brand-900/50 text-brand-600 dark:text-brand-400'
+                  : 'text-gray-300 dark:text-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-500 dark:hover:text-gray-400'
               }`}
               title={p.label === 'S' ? 'Small' : p.label === 'M' ? 'Medium' : 'Large'}
             >
@@ -266,13 +270,13 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
         </div>
       </div>
 
-      {/* Card body: flex column, spaced top–middle–bottom */}
+      {/* Card body */}
       <div className="absolute inset-0 flex flex-col pt-5 pb-3 px-4">
 
-        {/* Trend badge — top-left, only when tall enough */}
+        {/* Trend badge */}
         <div className="h-5 flex items-center">
           {showTrend && (
-            <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+            <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors ${
               isUp
                 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
                 : 'bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400'
@@ -283,15 +287,15 @@ function KPICard({ kpi, rows, prevRows, layoutItem, onSizePreset }) {
           )}
         </div>
 
-        {/* Value — dominant center */}
+        {/* Value */}
         <div className="flex-1 flex items-center justify-center">
           <p className={`${kpiValueClass(h)} font-bold text-gray-900 dark:text-white leading-none tabular-nums tracking-tight`}>
             {formatted}
           </p>
         </div>
 
-        {/* Label — small caps pinned to bottom */}
-        <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate uppercase tracking-widest text-center leading-none">
+        {/* Label */}
+        <p className="text-[11px] font-semibold text-gray-400 dark:text-slate-500 truncate uppercase tracking-widest text-center leading-none">
           {kpi.name}
         </p>
 
@@ -332,16 +336,16 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
     if (wt === 'bar_chart') {
       return (
         <BarChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+          <CartesianGrid strokeDasharray="4 4" stroke="var(--chart-grid, #f1f5f9)" strokeOpacity={0.8} vertical={false} />
           <XAxis dataKey="x" {...AXIS_PROPS} interval={0} />
           <YAxis {...AXIS_PROPS} width={48} tickFormatter={shortNum} />
-          <Tooltip {...TOOLTIP_STYLE} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+          <Tooltip {...TOOLTIP_STYLE} cursor={{ fill: 'var(--border-subtle, rgba(0,0,0,0.04))' }} />
           <Bar
             dataKey="y"
             name={widget.formula?.y_label || widget.formula?.y_column || 'Value'}
             fill={stroke1}
-            radius={[3, 3, 0, 0]}
-            maxBarSize={48}
+            radius={[4, 4, 0, 0]}
+            maxBarSize={52}
           />
         </BarChart>
       )
@@ -349,11 +353,11 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
     if (wt === 'comparison') {
       return (
         <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <CartesianGrid strokeDasharray="4 4" stroke="var(--chart-grid, #f1f5f9)" strokeOpacity={0.8} />
           <XAxis dataKey="x" {...AXIS_PROPS} interval="preserveStartEnd" />
           <YAxis {...AXIS_PROPS} width={48} tickFormatter={shortNum} />
           <Tooltip {...TOOLTIP_STYLE} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 12, color: 'var(--chart-axis)' }} />
           <Line type="monotone" dataKey="y1" name={widget.formula?.y1_label || 'Series 1'} stroke={stroke1} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
           <Line type="monotone" dataKey="y2" name={widget.formula?.y2_label || 'Series 2'} stroke={stroke2} strokeWidth={2} dot={false} strokeDasharray="5 3" activeDot={{ r: 4, strokeWidth: 0 }} />
         </LineChart>
@@ -361,7 +365,7 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
     }
     return (
       <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+        <CartesianGrid strokeDasharray="4 4" stroke="var(--chart-grid, #f1f5f9)" strokeOpacity={0.8} />
         <XAxis dataKey="x" {...AXIS_PROPS} interval="preserveStartEnd" />
         <YAxis {...AXIS_PROPS} width={48} tickFormatter={shortNum} />
         <Tooltip {...TOOLTIP_STYLE} />
@@ -371,7 +375,7 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 shadow-sm">
+    <div className="h-full flex flex-col bg-white dark:bg-slate-800/80 rounded-xl border border-gray-100 dark:border-slate-700/60 shadow-soft transition-shadow duration-200 hover:shadow-soft-md">
 
       {/* Header: drag zone (title + grip) | width presets */}
       <div className="flex items-center shrink-0 px-4 pt-3 pb-2 gap-2">
@@ -388,10 +392,10 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
                 key={p.label}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => onSizePreset?.(widget.id, p.w, layoutItem?.h ?? 8)}
-                className={`text-[10px] font-semibold px-2 h-5 rounded flex items-center justify-center transition-colors ${
+                className={`text-[10px] font-semibold px-2 h-5 rounded flex items-center justify-center transition-all duration-150 ${
                   active
-                    ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                    : 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-500 dark:hover:text-gray-400'
+                    ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400'
+                    : 'text-gray-300 dark:text-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-500 dark:hover:text-gray-400'
                 }`}
                 title={p.w === 12 ? 'Half width' : 'Full width'}
               >
@@ -402,13 +406,17 @@ function ChartWidget({ widget, rows, layoutItem, onSizePreset }) {
         </div>
       </div>
 
-      {/* Chart body — flex-1 min-h-0 with explicit padding; ResizeObserver above
-          measures this element and feeds pixel dimensions to ResponsiveContainer */}
+      {/* Chart body */}
       <div ref={bodyRef} className="flex-1 min-h-0 px-4 pb-4 pt-1">
         {!data.length ? (
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-            No data available for this chart.
-          </p>
+          <div className="h-full flex flex-col items-center justify-center gap-2 text-center">
+            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-slate-700/60 flex items-center justify-center">
+              <svg className="w-4 h-4 text-gray-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-slate-500">No data for this period</p>
+          </div>
         ) : dims.w > 0 && dims.h > 0 ? (
           <ResponsiveContainer width={dims.w} height={dims.h}>
             {renderChart()}
@@ -650,13 +658,14 @@ function WidgetGrid({ widgets, rows, prevRows, layout, layoutEpoch, onLayoutChan
 
 function Skeleton() {
   return (
-    <div className="space-y-4 animate-pulse">
-      <div className="flex gap-4">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-28 w-28 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shrink-0" />
+    <div className="space-y-4">
+      <div className="flex gap-3 overflow-hidden">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="shimmer h-16 w-28 shrink-0" />
         ))}
       </div>
-      <div className="h-64 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700" />
+      <div className="shimmer h-52 w-full" />
+      <div className="shimmer h-40 w-full" />
     </div>
   )
 }
